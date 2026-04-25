@@ -1,44 +1,42 @@
 package com.grabpic.backend.entity;
 
-import com.grabpic.backend.enums.GenderType;
-import com.grabpic.backend.enums.UserRole;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
-@Table(name = "td_user_details")
+@Table(name = "td_event_details")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class UserDetails {
+public class EventDetails {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(nullable = false)
-    private String firstname;
+    private String name;
 
-    @Column(nullable = false)
-    private String lastname;
+    private String venue;
 
-    @Column(nullable = false, unique = true)
-    private String email;
+    @Column(name = "event_date")
+    private LocalDateTime eventDate;
 
-    @Column(name = "phone_number", length = 10)
-    private String phoneNumber;
+    @Column(name = "owner_name")
+    private String ownerName;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private UserRole role;
+    @Column(name = "owner_contact")
+    private String ownerContact;
 
-    @Enumerated(EnumType.STRING)
-    private GenderType gender;
+    @Column(name = "photographer_id", nullable = false)
+    private Long photographerId;
 
-    private Integer age;
+    @Column(columnDefinition = "uuid")
+    private UUID publicToken;
 
     @Column(name = "is_active", nullable = false)
     @Builder.Default
@@ -54,6 +52,9 @@ public class UserDetails {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
+        if (publicToken == null) {
+            publicToken = UUID.randomUUID();
+        }
     }
 
     @PreUpdate

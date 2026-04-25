@@ -1,34 +1,29 @@
 package com.grabpic.backend.entity;
 
+import com.grabpic.backend.converter.VectorConverter;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "td_otp_requests")
+@Table(name = "td_face_embeddings")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class OtpRequest {
+public class FaceEmbeddings {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
-    private String email;
+    @Column(name = "asset_id", nullable = false)
+    private Long assetId;
 
-    @Column(name = "otp_hash", nullable = false)
-    private String otpHash;
-
-    @Column(name = "expiry_time", nullable = false)
-    private LocalDateTime expiryTime;
-
-    @Column(nullable = false)
-    @Builder.Default
-    private Integer attempts = 0;
+    @Column(nullable = false, columnDefinition = "vector(512)")
+    @Convert(converter = VectorConverter.class)
+    private float[] embedding;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -38,4 +33,3 @@ public class OtpRequest {
         createdAt = LocalDateTime.now();
     }
 }
-

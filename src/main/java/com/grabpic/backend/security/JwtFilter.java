@@ -1,5 +1,6 @@
 package com.grabpic.backend.security;
 
+import com.grabpic.backend.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,6 +21,7 @@ public class JwtFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
     private final UserDetailsServiceImpl userDetailsService;
+    private final UserRepository userRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -41,6 +43,14 @@ public class JwtFilter extends OncePerRequestFilter {
 
             if (SecurityContextHolder.getContext().getAuthentication() == null) {
                 UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+
+                // Get user ID from database and set as request attribute
+                com.grabpic.backend.entity.UserDetails user = userRepository.findByEmail(email)
+                        .orElseThrow(() -> new RuntimeException("User not found"));
+                
+                request.setAttribute("userId", user.getId());
+                request.setAttribute("userEmail", user.getEmail());
+                request.setAttribute("userRole", user.getRole());
 
                 UsernamePasswordAuthenticationToken authToken =
                         new UsernamePasswordAuthenticationToken(
