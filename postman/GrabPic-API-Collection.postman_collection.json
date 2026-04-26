@@ -1,0 +1,633 @@
+{
+	"info": {
+		"_postman_id": "grabpic-backend-collection",
+		"name": "GrabPic Backend API Collection",
+		"description": "Complete API collection for GrabPic backend testing. Includes authentication, event management, photo upload, and face search endpoints.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8080",
+			"type": "string"
+		},
+		{
+			"key": "jwtToken",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "photographerEmail",
+			"value": "photographer@grabpic.com",
+			"type": "string"
+		},
+		{
+			"key": "adminEmail",
+			"value": "admin@grabpic.com",
+			"type": "string"
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{jwtToken}}",
+				"type": "string"
+			}
+		]
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Request OTP",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"{{photographerEmail}}\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/request-otp",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"request-otp"
+							]
+						}
+					},
+					"response": [
+						{
+							"name": "OTP Request Success",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"email\": \"photographer@grabpic.com\"\n}"
+								},
+								"url": {
+									"raw": "http://localhost:8080/api/auth/request-otp",
+									"host": [
+										"localhost"
+									],
+									"port": "8080",
+									"path": [
+										"api",
+										"auth",
+										"request-otp"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n    \"message\": \"OTP sent successfully\",\n    \"expiresIn\": 600\n}"
+						}
+					]
+				},
+				{
+					"name": "Verify OTP & Get JWT",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"{{photographerEmail}}\",\n    \"otp\": \"123456\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/verify-otp",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"verify-otp"
+							]
+						}
+					},
+					"response": [
+						{
+							"name": "OTP Verification Success",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"email\": \"photographer@grabpic.com\",\n    \"otp\": \"123456\"\n}"
+								},
+								"url": {
+									"raw": "http://localhost:8080/api/auth/verify-otp",
+									"host": [
+										"localhost"
+									],
+									"port": "8080",
+									"path": [
+										"api",
+										"auth",
+										"verify-otp"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n    \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwaG90b2dyYXBoZXJAZ3JhYnBpYy5jb20iLCJyb2xlIjoiUEhPVE9HUkFQSEVSIiwiaWF0IjoxNjE2MjM5MDIyLCJleHAiOjE2MTYzMjU0MjJ9.example_signature\",\n    \"email\": \"photographer@grabpic.com\",\n    \"role\": \"PHOTOGRAPHER\"\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Admin Management",
+			"item": [
+				{
+					"name": "Create Photographer",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"firstname\": \"John\",\n    \"lastname\": \"Doe\",\n    \"email\": \"newphotographer@grabpic.com\",\n    \"phoneNumber\": \"9876543210\",\n    \"gender\": \"MALE\",\n    \"age\": 25\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/photographers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"admin",
+								"photographers"
+							]
+						}
+					},
+					"response": [
+						{
+							"name": "Photographer Created",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"firstname\": \"John\",\n    \"lastname\": \"Doe\",\n    \"email\": \"newphotographer@grabpic.com\",\n    \"phoneNumber\": \"9876543210\",\n    \"gender\": \"MALE\",\n    \"age\": 25\n}"
+								},
+								"url": {
+									"raw": "http://localhost:8080/api/admin/photographers",
+									"host": [
+										"localhost"
+									],
+									"port": "8080",
+									"path": [
+										"api",
+										"admin",
+										"photographers"
+									]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n    \"id\": 1,\n    \"firstname\": \"John\",\n    \"lastname\": \"Doe\",\n    \"email\": \"newphotographer@grabpic.com\",\n    \"phoneNumber\": \"9876543210\",\n    \"gender\": \"MALE\",\n    \"age\": 25,\n    \"role\": \"PHOTOGRAPHER\",\n    \"isActive\": true,\n    \"createdAt\": \"2026-04-26T18:00:00\",\n    \"updatedAt\": \"2026-04-26T18:00:00\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Get All Photographers",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/photographers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"admin",
+								"photographers"
+							]
+						}
+					},
+					"response": [
+						{
+							"name": "Photographers List",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "http://localhost:8080/api/admin/photographers",
+									"host": [
+										"localhost"
+									],
+									"port": "8080",
+									"path": [
+										"api",
+										"admin",
+										"photographers"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "[\n    {\n        \"id\": 1,\n        \"firstname\": \"John\",\n        \"lastname\": \"Doe\",\n        \"email\": \"newphotographer@grabpic.com\",\n        \"phoneNumber\": \"9876543210\",\n        \"gender\": \"MALE\",\n        \"age\": 25,\n        \"role\": \"PHOTOGRAPHER\",\n        \"isActive\": true\n    },\n    {\n        \"id\": 2,\n        \"firstname\": \"Jane\",\n        \"lastname\": \"Smith\",\n        \"email\": \"jane@grabpic.com\",\n        \"phoneNumber\": \"9876543211\",\n        \"gender\": \"FEMALE\",\n        \"age\": 28,\n        \"role\": \"PHOTOGRAPHER\",\n        \"isActive\": true\n    }\n]"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Event Management",
+			"item": [
+				{
+					"name": "Create Event",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Birthday Party\",\n    \"venue\": \"Community Hall\",\n    \"eventDate\": \"2026-05-15T18:00:00\",\n    \"ownerName\": \"John Doe\",\n    \"ownerContact\": \"9876543210\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/events",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"events"
+							]
+						}
+					},
+					"response": [
+						{
+							"name": "Event Created",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"name\": \"Birthday Party\",\n    \"venue\": \"Community Hall\",\n    \"eventDate\": \"2026-05-15T18:00:00\",\n    \"ownerName\": \"John Doe\",\n    \"ownerContact\": \"9876543210\"\n}"
+								},
+								"url": {
+									"raw": "http://localhost:8080/api/events",
+									"host": [
+										"localhost"
+									],
+									"port": "8080",
+									"path": [
+										"api",
+										"events"
+									]
+								}
+							},
+							"status": "Created",
+							"code": 201,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n    \"id\": 1,\n    \"name\": \"Birthday Party\",\n    \"venue\": \"Community Hall\",\n    \"eventDate\": \"2026-05-15T18:00:00\",\n    \"ownerName\": \"John Doe\",\n    \"ownerContact\": \"9876543210\",\n    \"photographerId\": 1,\n    \"publicToken\": \"550e8400-e29b-41d4-a716-446655440000\",\n    \"isActive\": true,\n    \"createdAt\": \"2026-04-26T18:00:00\",\n    \"updatedAt\": \"2026-04-26T18:00:00\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Events by Photographer",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/events",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"events"
+							]
+						}
+					},
+					"response": [
+						{
+							"name": "Events List",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "http://localhost:8080/api/events",
+									"host": [
+										"localhost"
+									],
+									"port": "8080",
+									"path": [
+										"api",
+										"events"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "[\n    {\n        \"id\": 1,\n        \"name\": \"Birthday Party\",\n        \"venue\": \"Community Hall\",\n        \"eventDate\": \"2026-05-15T18:00:00\",\n        \"ownerName\": \"John Doe\",\n        \"ownerContact\": \"9876543210\",\n        \"photographerId\": 1,\n        \"publicToken\": \"550e8400-e29b-41d4-a716-446655440000\",\n        \"isActive\": true,\n        \"createdAt\": \"2026-04-26T18:00:00\",\n        \"updatedAt\": \"2026-04-26T18:00:00\"\n    }\n]"
+						}
+					]
+				},
+				{
+					"name": "Get Event by Public Token",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/events/public/550e8400-e29b-41d4-a716-446655440000",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"events",
+								"public",
+								"550e8400-e29b-41d4-a716-446655440000"
+							]
+						}
+					},
+					"response": [
+						{
+							"name": "Event Details",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "http://localhost:8080/api/events/public/550e8400-e29b-41d4-a716-446655440000",
+									"host": [
+										"localhost"
+									],
+									"port": "8080",
+									"path": [
+										"api",
+										"events",
+										"public",
+										"550e8400-e29b-41d4-a716-446655440000"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n    \"id\": 1,\n    \"name\": \"Birthday Party\",\n    \"venue\": \"Community Hall\",\n    \"eventDate\": \"2026-05-15T18:00:00\",\n    \"ownerName\": \"John Doe\",\n    \"ownerContact\": \"9876543210\",\n    \"photographerId\": 1,\n    \"publicToken\": \"550e8400-e29b-41d4-a716-446655440000\",\n    \"isActive\": true,\n    \"createdAt\": \"2026-04-26T18:00:00\",\n    \"updatedAt\": \"2026-04-26T18:00:00\"\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Photo Upload",
+			"item": [
+				{
+					"name": "Upload Photo with Face Detection",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": "/path/to/sample/photo.jpg"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/upload/event/1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"upload",
+								"event",
+								"1"
+							]
+						}
+					},
+					"response": [
+						{
+							"name": "Photo Upload Success",
+							"originalRequest": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "formdata",
+									"formdata": [
+										{
+											"key": "file",
+											"type": "file",
+											"src": "/path/to/sample/photo.jpg"
+										}
+									]
+								},
+								"url": {
+									"raw": "http://localhost:8080/api/upload/event/1",
+									"host": [
+										"localhost"
+									],
+									"port": "8080",
+									"path": [
+										"api",
+										"upload",
+										"event",
+										"1"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n    \"success\": true,\n    \"message\": \"Photo uploaded and processed successfully\",\n    \"data\": {\n        \"assetId\": 1,\n        \"assetUrl\": \"uploads/event_1/1714478400000_sample_photo.jpg\",\n        \"thumbnailUrl\": \"uploads/event_1/1714478400000_sample_photo_thumb.jpg\",\n        \"size\": 2048576,\n        \"facesDetected\": 1\n    }\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Face Search",
+			"item": [
+				{
+					"name": "Search Photos by Face",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": "/path/to/sample/selfie.jpg"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/public/search/face/550e8400-e29b-41d4-a716-446655440000",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"public",
+								"search",
+								"face",
+								"550e8400-e29b-41d4-a716-446655440000"
+							]
+						}
+					},
+					"response": [
+						{
+							"name": "Face Search Results",
+							"originalRequest": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "formdata",
+									"formdata": [
+										{
+											"key": "file",
+											"type": "file",
+											"src": "/path/to/sample/selfie.jpg"
+										}
+									]
+								},
+								"url": {
+									"raw": "http://localhost:8080/api/public/search/face/550e8400-e29b-41d4-a716-446655440000",
+									"host": [
+										"localhost"
+									],
+									"port": "8080",
+									"path": [
+										"api",
+										"public",
+										"search",
+										"face",
+										"550e8400-e29b-41d4-a716-446655440000"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "[\n    {\n        \"assetId\": 1,\n        \"assetUrl\": \"uploads/event_1/1714478400000_photo1.jpg\",\n        \"thumbnailUrl\": \"uploads/event_1/1714478400000_photo1_thumb.jpg\",\n        \"similarityScore\": 0.95\n    },\n    {\n        \"assetId\": 2,\n        \"assetUrl\": \"uploads/event_1/1714478400001_photo2.jpg\",\n        \"thumbnailUrl\": \"uploads/event_1/1714478400001_photo2_thumb.jpg\",\n        \"similarityScore\": 0.87\n    },\n    {\n        \"assetId\": 3,\n        \"assetUrl\": \"uploads/event_1/1714478400002_photo3.jpg\",\n        \"thumbnailUrl\": \"uploads/event_1/1714478400002_photo3_thumb.jpg\",\n        \"similarityScore\": 0.72\n    }\n]"
+						}
+					]
+				}
+			]
+		}
+	]
+}

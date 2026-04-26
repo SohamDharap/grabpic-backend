@@ -7,7 +7,8 @@ import com.grabpic.backend.entity.FaceEmbeddings;
 import com.grabpic.backend.repository.AssetRepository;
 import com.grabpic.backend.repository.EventRepository;
 import com.grabpic.backend.repository.FaceEmbeddingRepository;
-import com.grabpic.backend.service.PythonFaceService;
+import com.grabpic.backend.exception.FaceEmbeddingException;
+import com.grabpic.backend.service.FaceEmbeddingService;
 import com.grabpic.backend.service.UploadService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,10 +27,10 @@ import java.util.List;
 @Slf4j
 public class UploadServiceImpl implements UploadService {
 
-    private final AssetRepository assetRepository;
     private final EventRepository eventRepository;
+    private final AssetRepository assetRepository;
     private final FaceEmbeddingRepository faceEmbeddingRepository;
-    private final PythonFaceService pythonFaceService;
+    private final FaceEmbeddingService faceEmbeddingService;
 
     @Value("${app.upload.dir:uploads}")
     private String uploadDir;
@@ -46,7 +47,7 @@ public class UploadServiceImpl implements UploadService {
             }
 
             // Check if file has a face
-            if (!pythonFaceService.hasFace(file)) {
+            if (!faceEmbeddingService.hasFace(file)) {
                 return UploadResponseDto.error("No face detected in the image");
             }
 
@@ -67,7 +68,7 @@ public class UploadServiceImpl implements UploadService {
             AssetDetails savedAsset = assetRepository.save(asset);
 
             // Extract and save face embedding
-            List<Double> embedding = pythonFaceService.extractFaceEmbedding(file);
+            List<Double> embedding = faceEmbeddingService.getEmbedding(file);
             float[] embeddingArray = convertDoubleListToFloatArray(embedding);
 
             FaceEmbeddings faceEmbedding = FaceEmbeddings.builder()
@@ -87,9 +88,21 @@ public class UploadServiceImpl implements UploadService {
                     eventId
             );
 
+        } catch (FaceEmbeddingException.NoFaceDetectedException e) {
+            log.warn("No face detected in uploaded image: {}", file.getOriginalFilename());
+            throw new RuntimeException("No face detected in the image. Please upload an image with a clearly visible face.");
+        } catch (FaceEmbeddingException.ServiceUnavailableException e) {
+            log.error("Face embedding service unavailable: {}", e.getMessage());
+            throw new RuntimeException("Face detection service is temporarily unavailable. Please try again later.");
+        } catch (FaceEmbeddingException e) {
+            log.error("Error processing face embedding: {}", e.getMessage());
+            throw new RuntimeException("Failed to process face embedding: " + e.getMessage());
+        } catch (IOException e) {
+            log.error("Error uploading file: {}", e.getMessage());
+            throw new RuntimeException("Failed to upload file: " + e.getMessage());
         } catch (Exception e) {
-            log.error("Error uploading image: {}", e.getMessage());
-            return UploadResponseDto.error("Failed to upload image: " + e.getMessage());
+            log.error("Unexpected error during upload: {}", e.getMessage());
+            throw new RuntimeException("Upload failed: " + e.getMessage());
         }
     }
 
