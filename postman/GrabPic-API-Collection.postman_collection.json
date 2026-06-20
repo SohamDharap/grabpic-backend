@@ -1,0 +1,340 @@
+{
+	"info": {
+		"_postman_id": "grabpic-backend-collection-v2",
+		"name": "GrabPic Backend API",
+		"description": "GrabPic backend REST API — OTP auth, admin photographer management, event CRUD, photo upload with face detection, and public face search.\n\nBase URL: {{baseUrl}}\nAuth: Bearer {{jwtToken}} (set automatically after Verify OTP, or paste manually)\n\nPublic routes (no JWT): /api/auth/**, /api/public/**\nAdmin routes: ROLE_ADMIN\nEvent/Upload routes: ROLE_PHOTOGRAPHER or ROLE_ADMIN",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8080",
+			"type": "string"
+		},
+		{
+			"key": "jwtToken",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "photographerEmail",
+			"value": "photographer@grabpic.com",
+			"type": "string"
+		},
+		{
+			"key": "adminEmail",
+			"value": "admin@grabpic.com",
+			"type": "string"
+		},
+		{
+			"key": "eventId",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "publicToken",
+			"value": "550e8400-e29b-41d4-a716-446655440000",
+			"type": "string"
+		},
+		{
+			"key": "photographerId",
+			"value": "1",
+			"type": "string"
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{jwtToken}}",
+				"type": "string"
+			}
+		]
+	},
+	"item": [
+		{
+			"name": "1. Authentication",
+			"description": "OTP-based login. No JWT required.",
+			"item": [
+				{
+					"name": "Request OTP",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"{{photographerEmail}}\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/request-otp",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "request-otp"]
+						},
+						"description": "Step 1: Send a 6-digit OTP to an existing active user's email. OTP expires in 10 minutes (max 3 attempts)."
+					},
+					"response": []
+				},
+				{
+					"name": "Verify OTP & Get JWT",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const json = pm.response.json();",
+									"    if (json.token) {",
+									"        pm.collectionVariables.set('jwtToken', json.token);",
+									"        console.log('JWT saved to collection variable jwtToken');",
+									"    }",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"{{photographerEmail}}\",\n    \"otp\": \"123456\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/auth/verify-otp",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "auth", "verify-otp"]
+						},
+						"description": "Step 2: Verify OTP and receive JWT. Response: { token, email, role }. Token is auto-saved to {{jwtToken}}."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "2. Admin — Photographer Management",
+			"description": "Requires ROLE_ADMIN JWT.",
+			"item": [
+				{
+					"name": "Create Photographer",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"firstname\": \"John\",\n    \"lastname\": \"Doe\",\n    \"email\": \"newphotographer@grabpic.com\",\n    \"phoneNumber\": \"9876543210\",\n    \"gender\": \"MALE\",\n    \"age\": 25\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/photographers",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "admin", "photographers"]
+						},
+						"description": "Create a new photographer account. Required: firstname, lastname, email. Optional: phoneNumber (10 digits), gender (MALE|FEMALE|OTHER), age."
+					},
+					"response": []
+				},
+				{
+					"name": "Get All Photographers",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/photographers",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "admin", "photographers"]
+						},
+						"description": "List all users with PHOTOGRAPHER role."
+					},
+					"response": []
+				},
+				{
+					"name": "Activate Photographer",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/photographers/{{photographerId}}/activate",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "admin", "photographers", "{{photographerId}}", "activate"]
+						},
+						"description": "Activate a photographer by ID."
+					},
+					"response": []
+				},
+				{
+					"name": "Deactivate Photographer",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/photographers/{{photographerId}}/deactivate",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "admin", "photographers", "{{photographerId}}", "deactivate"]
+						},
+						"description": "Deactivate a photographer by ID."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "3. Events",
+			"description": "Requires ROLE_PHOTOGRAPHER or ROLE_ADMIN JWT.",
+			"item": [
+				{
+					"name": "Create Event",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const json = pm.response.json();",
+									"    if (json.id) pm.collectionVariables.set('eventId', String(json.id));",
+									"    if (json.publicToken) pm.collectionVariables.set('publicToken', json.publicToken);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Birthday Party\",\n    \"venue\": \"Community Hall\",\n    \"eventDate\": \"2026-05-15T18:00:00\",\n    \"ownerName\": \"John Doe\",\n    \"ownerContact\": \"9876543210\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/events",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "events"]
+						},
+						"description": "Create an event for the authenticated photographer. Required: name. Optional: venue, eventDate (ISO-8601), ownerName, ownerContact. Returns publicToken for guest search link."
+					},
+					"response": []
+				},
+				{
+					"name": "Get My Events",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/events",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "events"]
+						},
+						"description": "List active events belonging to the authenticated photographer (from JWT userId)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Event by Public Token",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/events/public/{{publicToken}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "events", "public", "{{publicToken}}"]
+						},
+						"description": "Fetch active event details by publicToken UUID. Note: currently requires photographer/admin JWT (path is under /api/events/**)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "4. Photo Upload",
+			"description": "Requires ROLE_PHOTOGRAPHER or ROLE_ADMIN JWT.",
+			"item": [
+				{
+					"name": "Upload Photo (Face Detection)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": [],
+									"description": "JPEG or PNG image with a detectable face"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/events/{{eventId}}/upload",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "events", "{{eventId}}", "upload"]
+						},
+						"description": "Upload event photo. Multipart form field: file (JPEG/PNG). Validates event ownership, detects face, stores file and pgvector embedding. Returns UploadResponseDto or error if no face detected."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "5. Public Face Search",
+			"description": "No JWT required. Used by event guests to find their photos.",
+			"item": [
+				{
+					"name": "Search Photos by Selfie",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "selfie",
+									"type": "file",
+									"src": [],
+									"description": "Guest selfie (JPEG or PNG)"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/public/event/{{publicToken}}/search",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "public", "event", "{{publicToken}}", "search"]
+						},
+						"description": "Find matching event photos by face similarity. Multipart form field: selfie. Returns up to 20 matches with similarityScore (threshold ≤ 0.7 distance)."
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}

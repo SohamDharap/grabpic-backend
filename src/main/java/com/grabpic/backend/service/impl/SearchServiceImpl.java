@@ -3,9 +3,10 @@ package com.grabpic.backend.service.impl;
 import com.grabpic.backend.converter.VectorConverter;
 import com.grabpic.backend.dto.response.SearchResultDto;
 import com.grabpic.backend.entity.EventDetails;
+import com.grabpic.backend.exception.FaceEmbeddingException;
 import com.grabpic.backend.repository.EventRepository;
 import com.grabpic.backend.repository.FaceEmbeddingRepository;
-import com.grabpic.backend.service.PythonFaceService;
+import com.grabpic.backend.service.FaceEmbeddingService;
 import com.grabpic.backend.service.SearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,7 +24,7 @@ public class SearchServiceImpl implements SearchService {
 
     private final EventRepository eventRepository;
     private final FaceEmbeddingRepository faceEmbeddingRepository;
-    private final PythonFaceService pythonFaceService;
+    private final FaceEmbeddingService faceEmbeddingService;
 
     @Override
     public List<SearchResultDto> searchByFace(String publicToken, MultipartFile selfieFile) {
@@ -34,7 +35,7 @@ public class SearchServiceImpl implements SearchService {
                     .orElseThrow(() -> new RuntimeException("Event not found or inactive"));
 
             // Extract face embedding from selfie
-            List<Double> queryEmbedding = pythonFaceService.extractFaceEmbedding(selfieFile);
+            List<Double> queryEmbedding = faceEmbeddingService.getEmbedding(selfieFile);
 
             // Convert embedding to vector string format for pgvector
             float[] queryEmbeddingArray = convertDoubleListToFloatArray(queryEmbedding);
@@ -64,6 +65,15 @@ public class SearchServiceImpl implements SearchService {
             log.info("Found {} matching photos for event {}", searchResults.size(), event.getId());
             return searchResults;
 
+        } catch (FaceEmbeddingException.NoFaceDetectedException e) {
+            log.warn("No face detected in selfie image");
+            throw new RuntimeException("No face detected in the selfie. Please upload an image with a clearly visible face.");
+        } catch (FaceEmbeddingException.ServiceUnavailableException e) {
+            log.error("Face embedding service unavailable during search: {}", e.getMessage());
+            throw new RuntimeException("Face detection service is temporarily unavailable. Please try again later.");
+        } catch (FaceEmbeddingException e) {
+            log.error("Error processing face embedding for search: {}", e.getMessage());
+            throw new RuntimeException("Failed to process face embedding: " + e.getMessage());
         } catch (Exception e) {
             log.error("Error searching by face: {}", e.getMessage());
             throw new RuntimeException("Failed to search by face: " + e.getMessage());
