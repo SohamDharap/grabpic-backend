@@ -28,26 +28,24 @@ services:
   # Spring Boot Backend
   # ==========================================
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: grabpic-backend
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/grabpic_db
-      SPRING_DATASOURCE_USERNAME: grabpic_user
-      SPRING_DATASOURCE_PASSWORD: grabpic_pass
-    depends_on:
-      postgres:
-        condition: service_healthy
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./storage:/storage
-    networks:
-      - grabpic-network
+  image: ${DOCKER_USERNAME}/grabpic-backend:${IMAGE_TAG}
+  container_name: grabpic-backend
+  restart: unless-stopped
+  env_file:
+    - .env
+  environment:
+    SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/grabpic_db
+    SPRING_DATASOURCE_USERNAME: grabpic_user
+    SPRING_DATASOURCE_PASSWORD: grabpic_pass
+  depends_on:
+    postgres:
+      condition: service_healthy
+  ports:
+    - "8080:8080"
+  volumes:
+    - ./storage:/storage
+  networks:
+    - grabpic-network
 
 volumes:
   grabpic-pgdata:
