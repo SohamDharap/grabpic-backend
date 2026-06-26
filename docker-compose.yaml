@@ -1,8 +1,6 @@
-```yaml
 version: "3.8"
 
 services:
-
   # ==========================================
   # PostgreSQL + pgvector
   # ==========================================
@@ -35,8 +33,6 @@ services:
       dockerfile: Dockerfile
     container_name: grabpic-backend
     restart: unless-stopped
-    ports:
-      - "8080:8080"
     env_file:
       - .env
     environment:
@@ -46,6 +42,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./storage:/storage
     networks:
       - grabpic-network
 
@@ -55,4 +55,3 @@ volumes:
 networks:
   grabpic-network:
     driver: bridge
-```
