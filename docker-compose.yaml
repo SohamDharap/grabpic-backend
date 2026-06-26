@@ -1,4 +1,5 @@
-version: '3.8'
+```yaml
+version: "3.8"
 
 services:
 
@@ -17,49 +18,41 @@ services:
       - "5432:5432"
     volumes:
       - grabpic-pgdata:/var/lib/postgresql/data
-    networks:
-      - grabpic-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U grabpic_user -d grabpic_db"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - grabpic-network
 
   # ==========================================
   # Spring Boot Backend
-  # (uncomment when ready to containerize)
   # ==========================================
-  # backend:
-  #   build: .
-  #   container_name: grabpic-backend
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8080:8080"
-  #   environment:
-  #     SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/grabpic_db
-  #     SPRING_DATASOURCE_USERNAME: grabpic_user
-  #     SPRING_DATASOURCE_PASSWORD: grabpic_pass
-  #     APP_JWT_SECRET: ${APP_JWT_SECRET}
-  #     APP_JWT_EXPIRATION_MS: 86400000
-  #     SPRING_MAIL_USERNAME: ${MAIL_USERNAME}
-  #     SPRING_MAIL_PASSWORD: ${MAIL_PASSWORD}
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   networks:
-  #     - grabpic-network
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: grabpic-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/grabpic_db
+      SPRING_DATASOURCE_USERNAME: grabpic_user
+      SPRING_DATASOURCE_PASSWORD: grabpic_pass
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - grabpic-network
 
-# ==========================================
-# VOLUMES
-# ==========================================
 volumes:
   grabpic-pgdata:
-    name: grabpic-pgdata
 
-# ==========================================
-# NETWORKS
-# ==========================================
 networks:
   grabpic-network:
-    name: grabpic-network
     driver: bridge
+```
