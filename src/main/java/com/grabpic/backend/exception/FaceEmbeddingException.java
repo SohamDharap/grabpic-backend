@@ -26,6 +26,12 @@ public class FaceEmbeddingException extends RuntimeException {
         }
     }
     
+    public static class InvalidImageException extends FaceEmbeddingException {
+        public InvalidImageException(String message) {
+            super(message);
+        }
+    }
+    
     public static class InvalidResponseException extends FaceEmbeddingException {
         public InvalidResponseException(String message) {
             super(message);

@@ -9,6 +9,7 @@ import com.grabpic.backend.service.EmailService;
 import com.grabpic.backend.service.OtpService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -18,6 +19,7 @@ import java.util.Random;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class OtpServiceImpl implements OtpService {
 
     private final UserRepository userRepository;
@@ -31,6 +33,12 @@ public class OtpServiceImpl implements OtpService {
 
     @Value("${app.otp.max-attempts}")
     private int maxAttempts;
+
+    @Value("${app.otp.hardcoded-enabled:false}")
+    private boolean hardcodedOtpEnabled;
+
+    @Value("${app.otp.hardcoded-value:123456}")
+    private String hardcodedOtpValue;
 
     @Override
     @Transactional
@@ -47,8 +55,8 @@ public class OtpServiceImpl implements OtpService {
         // Delete any existing OTPs for this email
         otpRequestRepository.deleteAllByEmail(email);
 
-        // Generate 6-digit OTP
-        String otp = String.format("%06d", new Random().nextInt(999999));
+        // Generate OTP (hardcoded if enabled, else random 6-digit)
+        String otp = hardcodedOtpEnabled ? hardcodedOtpValue : String.format("%06d", new Random().nextInt(999999));
 
         // Hash the OTP before storing
         String otpHash = passwordEncoder.encode(otp);
@@ -63,8 +71,14 @@ public class OtpServiceImpl implements OtpService {
 
         otpRequestRepository.save(otpRequest);
 
-        // Send OTP via email
-        emailService.sendOtpEmail(email, otp, user.getFirstname());
+        // Send OTP via email or log if hardcoded mode is enabled
+        if (hardcodedOtpEnabled) {
+            log.info("=================================================");
+            log.info("  HARDCODED OTP ENABLED FOR [{}] : {}", email, otp);
+            log.info("=================================================");
+        } else {
+            emailService.sendOtpEmail(email, otp, user.getFirstname());
+        }
     }
 
     @Override

@@ -1,9 +1,11 @@
 package com.grabpic.backend.service.impl;
 
+import com.grabpic.backend.converter.VectorConverter;
+import com.grabpic.backend.dto.response.EmbeddingResponseDto;
+import com.grabpic.backend.dto.response.FaceEmbeddingDto;
 import com.grabpic.backend.dto.response.UploadResponseDto;
 import com.grabpic.backend.entity.AssetDetails;
 import com.grabpic.backend.entity.EventDetails;
-import com.grabpic.backend.entity.FaceEmbeddings;
 import com.grabpic.backend.repository.AssetRepository;
 import com.grabpic.backend.repository.EventRepository;
 import com.grabpic.backend.repository.FaceEmbeddingRepository;
@@ -46,8 +48,9 @@ public class UploadServiceImpl implements UploadService {
                 throw new RuntimeException("You are not authorized to upload to this event");
             }
 
-            // Check if file has a face
-            if (!faceEmbeddingService.hasFace(file)) {
+            // Extract face embeddings from image
+            EmbeddingResponseDto embeddingResponse = faceEmbeddingService.getAllFaces(file);
+            if (embeddingResponse == null || embeddingResponse.getFaces() == null || embeddingResponse.getFaces().isEmpty()) {
                 return UploadResponseDto.error("No face detected in the image");
             }
 
@@ -67,18 +70,16 @@ public class UploadServiceImpl implements UploadService {
 
             AssetDetails savedAsset = assetRepository.save(asset);
 
-            // Extract and save face embedding
-            List<Double> embedding = faceEmbeddingService.getEmbedding(file);
-            float[] embeddingArray = convertDoubleListToFloatArray(embedding);
+            // Save all detected face embeddings for this asset natively with CAST(:embedding AS vector)
+            for (FaceEmbeddingDto face : embeddingResponse.getFaces()) {
+                float[] embeddingArray = convertDoubleListToFloatArray(face.getEmbedding());
+                String vectorStr = VectorConverter.convertFloatArrayToVectorString(embeddingArray);
 
-            FaceEmbeddings faceEmbedding = FaceEmbeddings.builder()
-                    .assetId(savedAsset.getId())
-                    .embedding(embeddingArray)
-                    .build();
+                faceEmbeddingRepository.insertFaceEmbedding(savedAsset.getId(), vectorStr);
+            }
 
-            faceEmbeddingRepository.save(faceEmbedding);
-
-            log.info("Successfully uploaded and processed image for event: {}, asset: {}", eventId, savedAsset.getId());
+            log.info("Successfully uploaded and saved {} face embedding(s) for event: {}, asset: {}", 
+                    embeddingResponse.getFaces().size(), eventId, savedAsset.getId());
 
             return UploadResponseDto.success(
                     savedAsset.getId(),
@@ -91,6 +92,9 @@ public class UploadServiceImpl implements UploadService {
         } catch (FaceEmbeddingException.NoFaceDetectedException e) {
             log.warn("No face detected in uploaded image: {}", file.getOriginalFilename());
             throw new RuntimeException("No face detected in the image. Please upload an image with a clearly visible face.");
+        } catch (FaceEmbeddingException.InvalidImageException e) {
+            log.warn("Invalid image format: {}", file.getOriginalFilename());
+            throw new RuntimeException("Invalid image file. Please upload a valid image (JPEG, PNG, WebP).");
         } catch (FaceEmbeddingException.ServiceUnavailableException e) {
             log.error("Face embedding service unavailable: {}", e.getMessage());
             throw new RuntimeException("Face detection service is temporarily unavailable. Please try again later.");

@@ -41,23 +41,26 @@ public class SearchServiceImpl implements SearchService {
             float[] queryEmbeddingArray = convertDoubleListToFloatArray(queryEmbedding);
             String queryVectorString = VectorConverter.convertFloatArrayToVectorString(queryEmbeddingArray);
 
-            // Use native pgvector similarity search
+            log.info("Executing pgvector cosine distance search for eventId: {}", event.getId());
             List<Object[]> results = faceEmbeddingRepository.findSimilarEmbeddings(
                     event.getId(), queryVectorString, 20);
+
+            log.info("pgvector returned {} candidate face matches from DB", results.size());
 
             // Convert results to SearchResultDto
             List<SearchResultDto> searchResults = new ArrayList<>();
             for (Object[] result : results) {
-                Long assetId = (Long) result[0];
+                Long assetId = ((Number) result[0]).longValue();
                 String assetUrl = (String) result[1];
                 String thumbnailUrl = (String) result[2];
-                Double distance = (Double) result[3];
+                double distance = ((Number) result[3]).doubleValue();
                 
-                // Convert distance to similarity (lower distance = higher similarity)
-                double similarity = 1 - Math.min(distance, 2.0); // Normalize to 0-1 range
+                // Cosine similarity = 1 - cosine distance
+                double similarity = Math.max(0.0, 1.0 - distance);
+                log.info("Candidate assetId: {}, distance: {}, similarity: {}", assetId, distance, similarity);
                 
-                // Only include matches with similarity above threshold (e.g., 0.3 distance threshold)
-                if (distance <= 0.7) {
+                // Include matches with Cosine Distance <= 0.75 (Cosine Similarity >= 0.25)
+                if (distance <= 0.75) {
                     searchResults.add(new SearchResultDto(assetId, assetUrl, thumbnailUrl, similarity));
                 }
             }

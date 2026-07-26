@@ -5,7 +5,9 @@ import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
 import java.security.Key;
+import java.security.MessageDigest;
 import java.util.Base64;
 import java.util.Date;
 
@@ -19,7 +21,25 @@ public class JwtUtil {
     private long expirationMs;
 
     private Key getSigningKey() {
-        byte[] keyBytes = Base64.getDecoder().decode(secret);
+        byte[] keyBytes;
+        try {
+            keyBytes = Base64.getDecoder().decode(secret);
+        } catch (Exception e) {
+            keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+        }
+
+        // Guarantee at least 256 bits (32 bytes) for HMAC-SHA
+        if (keyBytes.length < 32) {
+            try {
+                MessageDigest md = MessageDigest.getInstance("SHA-256");
+                keyBytes = md.digest(secret.getBytes(StandardCharsets.UTF_8));
+            } catch (Exception ex) {
+                byte[] padded = new byte[32];
+                System.arraycopy(keyBytes, 0, padded, 0, Math.min(keyBytes.length, 32));
+                keyBytes = padded;
+            }
+        }
+
         return Keys.hmacShaKeyFor(keyBytes);
     }
 

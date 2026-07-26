@@ -16,24 +16,7 @@ public class VectorConverter implements AttributeConverter<float[], String> {
 
     @Override
     public String convertToDatabaseColumn(float[] attribute) {
-        if (attribute == null) {
-            return null;
-        }
-        
-        if (attribute.length != VECTOR_DIMENSION) {
-            throw new IllegalArgumentException(
-                "Vector dimension must be " + VECTOR_DIMENSION + ", got " + attribute.length);
-        }
-
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < attribute.length; i++) {
-            if (i > 0) {
-                sb.append(",");
-            }
-            sb.append(DECIMAL_FORMAT.format(attribute[i]));
-        }
-        sb.append("]");
-        return sb.toString();
+        return convertFloatArrayToVectorString(attribute);
     }
 
     @Override
@@ -42,7 +25,6 @@ public class VectorConverter implements AttributeConverter<float[], String> {
             return null;
         }
 
-        // Handle both pgvector array format and bracket format
         String content = dbData.trim();
         if (content.startsWith("[") && content.endsWith("]")) {
             content = content.substring(1, content.length() - 1);
@@ -78,7 +60,18 @@ public class VectorConverter implements AttributeConverter<float[], String> {
     }
 
     public static String convertFloatArrayToVectorString(float[] embedding) {
-        return new VectorConverter().convertToDatabaseColumn(embedding);
+        if (embedding == null) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < embedding.length; i++) {
+            if (i > 0) {
+                sb.append(",");
+            }
+            sb.append(DECIMAL_FORMAT.format(embedding[i]));
+        }
+        sb.append("]");
+        return sb.toString();
     }
 
     public static float[] convertVectorStringToFloatArray(String vectorString) {
