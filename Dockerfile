@@ -30,6 +30,11 @@ RUN mvn clean package -DskipTests
 # Use a smaller JRE image since compilation is already complete
 FROM eclipse-temurin:21-jre
 
+# Install curl for Docker health checks
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # Set the application directory
 WORKDIR /app
 
