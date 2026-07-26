@@ -42,7 +42,6 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/**").authenticated()
                         .anyRequest().authenticated()
                 )
-                .addFilterBefore(requestLoggingFilter, JwtFilter.class)
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

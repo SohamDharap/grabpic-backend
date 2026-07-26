@@ -24,17 +24,17 @@ public class JwtFilter extends OncePerRequestFilter {
     private final JwtUtil jwtUtil;
     private final UserDetailsServiceImpl userDetailsService;
     private final UserRepository userRepository;
+
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        log.debug("Skipping JWT filter for public endpoint: {}", request.getRequestURI());
         String path = request.getRequestURI();
+        log.debug("Skipping JWT filter for public endpoint: {}", path);
         return path.startsWith("/api/auth/") ||
                path.startsWith("/api/public/") ||
                path.startsWith("/actuator/health") ||
                path.equals("/actuator/info") ||
                path.equals("/api/system/status");
     }
-
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -47,18 +47,15 @@ public class JwtFilter extends OncePerRequestFilter {
 
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             log.debug("No valid Authorization header found");
-            log.debug("JWT token validation failed");
-        }
-
-        filterChain.doFilter(request, response);
+            filterChain.doFilter(request, response);
             return;
         }
 
         String token = authHeader.substring(7);
 
         if (jwtUtil.validateToken(token)) {
-            log.debug("JWT token validated successfully for email: {}", email);
             String email = jwtUtil.extractEmail(token);
+            log.debug("JWT token validated successfully for email: {}", email);
 
             if (SecurityContextHolder.getContext().getAuthentication() == null) {
                 log.debug("Setting authentication for user: {}", email);
@@ -82,9 +79,8 @@ public class JwtFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(authToken);
                 log.info("Authentication successful for user: {} with role: {}", email, user.getRole());
             }
-        }
-
-        log.debug("JWT token validation failed");
+        } else {
+            log.debug("JWT token validation failed");
         }
 
         filterChain.doFilter(request, response);
