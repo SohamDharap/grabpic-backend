@@ -1,5 +1,6 @@
 package com.grabpic.backend.config;
 
+import com.grabpic.backend.filter.RequestLoggingFilter;
 import com.grabpic.backend.security.JwtFilter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -17,6 +18,9 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
+
+    @Autowired
+    private RequestLoggingFilter requestLoggingFilter;
 
     @Autowired
     private JwtFilter jwtFilter;
@@ -38,6 +42,7 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/**").authenticated()
                         .anyRequest().authenticated()
                 )
+                .addFilterBefore(requestLoggingFilter, JwtFilter.class)
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

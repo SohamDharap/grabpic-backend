@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <springProfile name="!prod">
+        <!-- Console appender for local development -->
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>${LOG_PATTERN:-%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n}</pattern>
+            </encoder>
+        </appender>
+
+        <root level="${LOG_LEVEL_ROOT:-INFO}">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <springProfile name="prod">
+        <!-- Console appender for Docker logs (stdout) -->
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>${LOG_PATTERN:-%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n}</pattern>
+            </encoder>
+        </appender>
+
+        <!-- File appender for persistent logs -->
+        <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${LOG_PATH:-logs}/${LOG_FILE_NAME:-grabpic}.log</file>
+            <encoder>
+                <pattern>${LOG_PATTERN:-%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n}</pattern>
+            </encoder>
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <fileNamePattern>${LOG_PATH:-logs}/${LOG_FILE_NAME:-grabpic}.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+                <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                    <maxFileSize>${LOG_MAX_FILE_SIZE:-10MB}</maxFileSize>
+                </timeBasedFileNamingAndTriggeringPolicy>
+                <maxHistory>${LOG_MAX_HISTORY:-30}</maxHistory>
+                <totalSizeCap>${LOG_TOTAL_SIZE_CAP:-1GB}</totalSizeCap>
+            </rollingPolicy>
+        </appender>
+
+        <root level="${LOG_LEVEL_ROOT:-INFO}">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE"/>
+        </root>
+    </springProfile>
+
+    <!-- Application-specific logging -->
+    <logger name="com.grabpic" level="${LOG_LEVEL_APP:-DEBUG}"/>
+
+    <!-- Spring Security DEBUG for production troubleshooting -->
+    <logger name="org.springframework.security" level="${LOG_LEVEL_SECURITY:-DEBUG}"/>
+</configuration>

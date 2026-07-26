@@ -6,6 +6,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -16,6 +17,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 
 @Component
+@Slf4j
 @RequiredArgsConstructor
 public class JwtFilter extends OncePerRequestFilter {
 
@@ -24,6 +26,7 @@ public class JwtFilter extends OncePerRequestFilter {
     private final UserRepository userRepository;
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
+        log.debug("Skipping JWT filter for public endpoint: {}", request.getRequestURI());
         String path = request.getRequestURI();
         return path.startsWith("/api/auth/") ||
                path.startsWith("/api/public/") ||
@@ -40,18 +43,25 @@ public class JwtFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
 
         String authHeader = request.getHeader("Authorization");
+        log.debug("Processing JWT filter for: {}", request.getRequestURI());
 
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            filterChain.doFilter(request, response);
+            log.debug("No valid Authorization header found");
+            log.debug("JWT token validation failed");
+        }
+
+        filterChain.doFilter(request, response);
             return;
         }
 
         String token = authHeader.substring(7);
 
         if (jwtUtil.validateToken(token)) {
+            log.debug("JWT token validated successfully for email: {}", email);
             String email = jwtUtil.extractEmail(token);
 
             if (SecurityContextHolder.getContext().getAuthentication() == null) {
+                log.debug("Setting authentication for user: {}", email);
                 UserDetails userDetails = userDetailsService.loadUserByUsername(email);
 
                 // Get user ID from database and set as request attribute
@@ -70,7 +80,11 @@ public class JwtFilter extends OncePerRequestFilter {
                         new WebAuthenticationDetailsSource().buildDetails(request));
 
                 SecurityContextHolder.getContext().setAuthentication(authToken);
+                log.info("Authentication successful for user: {} with role: {}", email, user.getRole());
             }
+        }
+
+        log.debug("JWT token validation failed");
         }
 
         filterChain.doFilter(request, response);

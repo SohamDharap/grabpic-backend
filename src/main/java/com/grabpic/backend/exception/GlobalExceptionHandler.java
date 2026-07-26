@@ -7,7 +7,9 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -16,6 +18,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto> handleValidationErrors(
             MethodArgumentNotValidException ex) {
 
+        log.warn("Validation error: {}", errors);
         String errors = ex.getBindingResult().getFieldErrors()
                 .stream()
                 .map(e -> e.getField() + ": " + e.getDefaultMessage())
@@ -30,6 +33,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto> handleRuntimeException(
             RuntimeException ex) {
 
+        log.error("RuntimeException: {}", ex.getMessage(), ex);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ApiResponseDto(false, ex.getMessage()));
     }

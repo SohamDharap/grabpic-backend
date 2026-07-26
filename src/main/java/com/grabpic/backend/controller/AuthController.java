@@ -9,11 +9,13 @@ import com.grabpic.backend.repository.UserRepository;
 import com.grabpic.backend.service.OtpService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/auth")
+@Slf4j
 @RequiredArgsConstructor
 public class AuthController {
 
@@ -25,7 +27,9 @@ public class AuthController {
     public ResponseEntity<ApiResponseDto> requestOtp(
             @Valid @RequestBody OtpRequestDto request) {
 
+        log.info("OTP request for email: {}", request.getEmail());
         otpService.generateAndSendOtp(request.getEmail());
+        log.info("OTP sent successfully to: {}", request.getEmail());
         return ResponseEntity.ok(
                 new ApiResponseDto(true, "OTP sent to " + request.getEmail()));
     }
@@ -35,11 +39,13 @@ public class AuthController {
     public ResponseEntity<JwtResponseDto> verifyOtp(
             @Valid @RequestBody OtpVerifyDto request) {
 
+        log.info("OTP verification attempt for email: {}", request.getEmail());
         String token = otpService.verifyOtpAndGenerateToken(
                 request.getEmail(), request.getOtp());
 
         UserDetails user = userRepository.findByEmail(request.getEmail()).get();
 
+        log.info("OTP verified successfully for email: {}, role: {}", user.getEmail(), user.getRole().name());
         return ResponseEntity.ok(
                 new JwtResponseDto(token, user.getEmail(), user.getRole().name()));
     }
