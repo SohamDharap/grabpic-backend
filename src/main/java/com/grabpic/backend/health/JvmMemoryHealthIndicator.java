@@ -29,7 +29,7 @@ public class JvmMemoryHealthIndicator implements HealthIndicator {
                 .build();
     }
 
-    static String formatBytes(long bytes) {
+    public static String formatBytes(long bytes) {
         if (bytes < 0) {
             return "unknown";
         }
