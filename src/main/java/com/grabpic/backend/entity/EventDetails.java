@@ -38,6 +38,17 @@ public class EventDetails {
     @Column(columnDefinition = "uuid")
     private UUID publicToken;
 
+    /**
+     * If null, this is a main event.
+     * If non-null, this is a sub-event of the referenced parent event.
+     * Only one level of nesting is allowed (a sub-event cannot be a parent).
+     */
+    @Column(name = "parent_event_id")
+    private Long parentEventId;
+
+    @Column(length = 500)
+    private String description;
+
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     private Boolean isActive = true;

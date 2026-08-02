@@ -44,13 +44,13 @@ public class OtpServiceImpl implements OtpService {
     @Transactional
     public void generateAndSendOtp(String email) {
         // Check user exists and is active
-        UserDetails user = userRepository.findByEmail(email)
-                .orElseThrow(() ->
-                        new RuntimeException("No account found with this email"));
-
-        if (!user.getIsActive()) {
-            throw new RuntimeException("Account is inactive. Contact admin");
+        java.util.Optional<UserDetails> userOpt = userRepository.findByEmail(email);
+        if (userOpt.isEmpty() || !userOpt.get().getIsActive()) {
+            log.info("OTP requested for non-existent or inactive email: {}. Returning success silently.", email);
+            return;
         }
+
+        UserDetails user = userOpt.get();
 
         // Delete any existing OTPs for this email
         otpRequestRepository.deleteAllByEmail(email);

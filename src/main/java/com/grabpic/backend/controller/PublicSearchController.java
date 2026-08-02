@@ -2,6 +2,7 @@ package com.grabpic.backend.controller;
 
 import com.grabpic.backend.dto.response.SearchResultDto;
 import com.grabpic.backend.service.SearchService;
+import com.grabpic.backend.util.FileValidationUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -27,20 +28,12 @@ public class PublicSearchController {
             return ResponseEntity.badRequest().build();
         }
 
-        if (!isValidImageFile(selfieFile)) {
+        if (!FileValidationUtil.isValidImageFile(selfieFile)) {
             return ResponseEntity.badRequest().build();
         }
 
         List<SearchResultDto> results = searchService.searchByFace(publicToken, selfieFile);
         return ResponseEntity.ok(results);
     }
-
-    private boolean isValidImageFile(MultipartFile file) {
-        String contentType = file.getContentType();
-        return contentType != null && (
-                contentType.startsWith("image/jpeg") ||
-                contentType.startsWith("image/png") ||
-                contentType.startsWith("image/jpg")
-        );
-    }
 }
+

@@ -34,4 +34,16 @@ public interface FaceEmbeddingRepository extends JpaRepository<FaceEmbeddings, L
     List<Object[]> findSimilarEmbeddings(@Param("eventId") Long eventId, 
                                        @Param("queryVector") String queryVector, 
                                        @Param("limit") int limit);
+
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM FaceEmbeddings fe WHERE fe.assetId = :assetId")
+    void deleteByAssetId(@Param("assetId") Long assetId);
+
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM FaceEmbeddings fe WHERE fe.assetId IN :assetIds")
+    void deleteByAssetIdIn(@Param("assetIds") List<Long> assetIds);
 }
+
+

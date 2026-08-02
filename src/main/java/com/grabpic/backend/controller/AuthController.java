@@ -29,9 +29,8 @@ public class AuthController {
 
         log.info("OTP request for email: {}", request.getEmail());
         otpService.generateAndSendOtp(request.getEmail());
-        log.info("OTP sent successfully to: {}", request.getEmail());
         return ResponseEntity.ok(
-                new ApiResponseDto(true, "OTP sent to " + request.getEmail()));
+                new ApiResponseDto(true, "If an account with this email exists, you will receive an OTP on your registered email."));
     }
 
     // Step 2 — Verify OTP + get JWT

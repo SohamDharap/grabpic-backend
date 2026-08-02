@@ -20,6 +20,13 @@ public class AssetDetails {
     @Column(name = "event_id", nullable = false)
     private Long eventId;
 
+    /**
+     * Optional. When non-null, this asset belongs to the specified sub-event
+     * within the parent event identified by eventId.
+     */
+    @Column(name = "sub_event_id")
+    private Long subEventId;
+
     @Column(name = "photographer_id", nullable = false)
     private Long photographerId;
 
@@ -30,6 +37,12 @@ public class AssetDetails {
     private String thumbnailUrl;
 
     private Long size;
+
+    @Column(name = "original_filename", length = 500)
+    private String originalFilename;
+
+    @Column(name = "content_type", length = 100)
+    private String contentType;
 
     @Column(name = "is_deleted", nullable = false)
     @Builder.Default

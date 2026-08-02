@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -18,15 +19,24 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto> handleValidationErrors(
             MethodArgumentNotValidException ex) {
 
-        String errors = null;
-        log.warn("Validation error: {}", errors);
-        errors = ex.getBindingResult().getFieldErrors()
+        String errors = ex.getBindingResult().getFieldErrors()
                 .stream()
                 .map(e -> e.getField() + ": " + e.getDefaultMessage())
                 .collect(Collectors.joining(", "));
+        log.warn("Validation error: {}", errors);
 
         return ResponseEntity.badRequest()
                 .body(new ApiResponseDto(false, errors));
+    }
+
+    // Handles file upload size limit exceeded
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponseDto> handleMaxSizeException(
+            MaxUploadSizeExceededException ex) {
+
+        log.warn("Upload size limit exceeded: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(new ApiResponseDto(false, "File size limit exceeded. Maximum single file limit is 100MB and total upload limit is 500MB."));
     }
 
     // Handles all RuntimeExceptions (OTP errors, user not found, etc.)
@@ -38,4 +48,4 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ApiResponseDto(false, ex.getMessage()));
     }
-}
+}

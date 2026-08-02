@@ -4,28 +4,66 @@ import lombok.Data;
 
 @Data
 public class UploadResponseDto {
-    
+
     private Long assetId;
     private String assetUrl;
     private String thumbnailUrl;
     private Long size;
     private Long eventId;
+    private Long subEventId;
+    private String originalFilename;
     private String message;
-    
-    public static UploadResponseDto success(Long assetId, String assetUrl, String thumbnailUrl, Long size, Long eventId) {
+
+    /**
+     * Per-file upload status: SUCCESS, FAILURE, or SKIPPED (e.g., no face detected).
+     */
+    private String status;
+
+    public static UploadResponseDto success(Long assetId, String assetUrl, String thumbnailUrl,
+                                            Long size, Long eventId, Long subEventId,
+                                            String originalFilename) {
         UploadResponseDto response = new UploadResponseDto();
         response.setAssetId(assetId);
         response.setAssetUrl(assetUrl);
         response.setThumbnailUrl(thumbnailUrl);
         response.setSize(size);
         response.setEventId(eventId);
+        response.setSubEventId(subEventId);
+        response.setOriginalFilename(originalFilename);
+        response.setStatus("SUCCESS");
         response.setMessage("Image uploaded and processed successfully");
         return response;
     }
-    
+
+    /**
+     * Legacy factory kept for backward compatibility with existing single-upload callers.
+     */
+    public static UploadResponseDto success(Long assetId, String assetUrl, String thumbnailUrl,
+                                            Long size, Long eventId) {
+        return success(assetId, assetUrl, thumbnailUrl, size, eventId, null, null);
+    }
+
     public static UploadResponseDto error(String message) {
         UploadResponseDto response = new UploadResponseDto();
+        response.setStatus("FAILURE");
+        response.setMessage(message);
+        return response;
+    }
+
+    public static UploadResponseDto fileFailure(String originalFilename, String message) {
+        UploadResponseDto response = new UploadResponseDto();
+        response.setOriginalFilename(originalFilename);
+        response.setStatus("FAILURE");
+        response.setMessage(message);
+        return response;
+    }
+
+    public static UploadResponseDto skipped(String originalFilename, String message) {
+        UploadResponseDto response = new UploadResponseDto();
+        response.setOriginalFilename(originalFilename);
+        response.setStatus("SKIPPED");
         response.setMessage(message);
         return response;
     }
 }
+

@@ -1,0 +1,29 @@
+package com.grabpic.backend.dto.request;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import lombok.Data;
+
+import java.time.LocalDateTime;
+
+@Data
+public class CreateSubEventDto {
+
+    @NotBlank(message = "Sub-event name is required")
+    @Size(max = 100, message = "Sub-event name must be less than 100 characters")
+    private String name;
+
+    @Size(max = 200, message = "Venue must be less than 200 characters")
+    private String venue;
+
+    private LocalDateTime eventDate;
+
+    @Size(max = 100, message = "Owner name must be less than 100 characters")
+    private String ownerName;
+
+    @Size(max = 20, message = "Owner contact must be less than 20 characters")
+    private String ownerContact;
+
+    @Size(max = 500, message = "Description must be less than 500 characters")
+    private String description;
+}
