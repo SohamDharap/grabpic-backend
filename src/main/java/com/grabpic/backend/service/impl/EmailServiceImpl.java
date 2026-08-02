@@ -10,6 +10,8 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
+import org.springframework.scheduling.annotation.Async;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -27,6 +29,7 @@ public class EmailServiceImpl implements EmailService {
     private String fromName;
 
     @Override
+    @Async
     public void sendOtpEmail(String toEmail, String otp, String firstname) {
         if (hardcodedOtpEnabled) {
             log.info("Hardcoded OTP mode active. Skipping email dispatch for {}", toEmail);
