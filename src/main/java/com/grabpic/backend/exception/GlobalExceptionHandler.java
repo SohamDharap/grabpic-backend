@@ -34,7 +34,8 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto> handleMaxSizeException(
             MaxUploadSizeExceededException ex) {
 
-        log.warn("Upload size limit exceeded: {}", ex.getMessage());
+        log.warn("Upload size limit exceeded! Exception message: {}, Max upload size: {}, Cause: {}",
+                ex.getMessage(), ex.getMaxUploadSize(), ex.getCause() != null ? ex.getCause().getMessage() : "N/A");
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
                 .body(new ApiResponseDto(false, "File size limit exceeded. Maximum single file limit is 100MB and total upload limit is 500MB."));
     }

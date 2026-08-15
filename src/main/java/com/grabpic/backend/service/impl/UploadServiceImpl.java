@@ -44,16 +44,17 @@ public class UploadServiceImpl implements UploadService {
     @Value("${app.upload.dir:uploads}")
     private String uploadDir;
 
-    @Value("${app.upload.max-files:20}")
+    @Value("${app.upload.max-files:100}")
     private int maxFiles;
 
-    @Value("${app.upload.max-zip-size-mb:200}")
+    @Value("${app.upload.max-zip-size-mb:500}")
     private long maxZipSizeMb;
 
     // ── Existing single-file upload (backward compatible) ────────────────────
 
     @Override
     public Object uploadImage(Long eventId, MultipartFile file, Long photographerId) {
+        logUploadDetails(file != null ? List.of(file) : List.of());
         try {
             EventDetails event = validateEventOwnership(eventId, photographerId);
             return processSingleFile(file, event, null, photographerId);
@@ -83,6 +84,7 @@ public class UploadServiceImpl implements UploadService {
     @Override
     public BulkUploadResponseDto uploadImages(Long eventId, Long subEventId,
                                               List<MultipartFile> files, Long photographerId) {
+        logUploadDetails(files);
         EventDetails event = validateEventOwnership(eventId, photographerId);
 
         // When uploading to a sub-event, validate it exists and belongs to this event
@@ -427,6 +429,36 @@ public class UploadServiceImpl implements UploadService {
         } catch (IOException e) {
             log.warn("Failed to clean up temp directory {}: {}", dir, e.getMessage());
         }
+    }
+
+    private void logUploadDetails(List<MultipartFile> files) {
+        if (files == null || files.isEmpty()) {
+            log.info("Upload request received: files=0");
+            return;
+        }
+
+        long totalSizeBytes = 0;
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("Upload request received:%nfiles=%d%n", files.size()));
+
+        for (int i = 0; i < files.size(); i++) {
+            MultipartFile f = files.get(i);
+            long bytes = f != null ? f.getSize() : 0;
+            totalSizeBytes += bytes;
+            double sizeKb = bytes / 1024.0;
+            double sizeMb = bytes / (1024.0 * 1024.0);
+            sb.append(String.format("file[%d]='%s' contentType='%s' size=%d bytes (%.2f KB, %.2f MB)%n",
+                    i, f != null ? f.getOriginalFilename() : "null",
+                    f != null ? f.getContentType() : "null",
+                    bytes, sizeKb, sizeMb));
+        }
+
+        double totalSizeMb = totalSizeBytes / (1024.0 * 1024.0);
+        sb.append(String.format("totalSize=%d bytes (%.2f MB)%n", totalSizeBytes, totalSizeMb));
+        sb.append("maxSingleFileSize=104857600 bytes (100.00 MB)%n");
+        sb.append("maxTotalUploadSize=524288000 bytes (500.00 MB)");
+
+        log.info(sb.toString());
     }
 }
 
