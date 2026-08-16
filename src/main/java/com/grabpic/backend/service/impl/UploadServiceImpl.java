@@ -11,6 +11,7 @@ import com.grabpic.backend.exception.FaceEmbeddingException;
 import com.grabpic.backend.repository.AssetRepository;
 import com.grabpic.backend.repository.EventRepository;
 import com.grabpic.backend.repository.FaceEmbeddingRepository;
+import com.grabpic.backend.service.AsyncFaceProcessingService;
 import com.grabpic.backend.service.FaceEmbeddingService;
 import com.grabpic.backend.service.UploadService;
 import com.grabpic.backend.util.FileValidationUtil;
@@ -25,9 +26,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.Optional;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -40,6 +44,8 @@ public class UploadServiceImpl implements UploadService {
     private final AssetRepository assetRepository;
     private final FaceEmbeddingRepository faceEmbeddingRepository;
     private final FaceEmbeddingService faceEmbeddingService;
+    private final AsyncFaceProcessingService asyncFaceProcessingService;
+
 
     @Value("${app.upload.dir:uploads}")
     private String uploadDir;
@@ -265,34 +271,53 @@ public class UploadServiceImpl implements UploadService {
 
     // ── Shared core processing ────────────────────────────────────────────────
 
+    // ── Shared core processing ────────────────────────────────────────────────
+
     /**
      * Core processing pipeline for a single image file.
-     * Validates → extracts face embeddings → stores file → saves asset + embeddings.
+     * Computes SHA-256 hash -> checks duplicate -> persists file & asset (status UPLOADED) -> triggers async face processing.
      *
      * @param file           the image file to process
      * @param event          the validated event entity
      * @param subEventId     optional sub-event ID (null = main event)
      * @param photographerId the authenticated photographer
-     * @return UploadResponseDto with status SUCCESS
+     * @return UploadResponseDto with status UPLOADED or duplicate status
      */
     private UploadResponseDto processSingleFile(MultipartFile file, EventDetails event,
                                                 Long subEventId, Long photographerId)
-            throws FaceEmbeddingException, IOException {
+            throws IOException {
 
-        String originalFilename = file.getOriginalFilename();
+        String originalFilename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "image.jpg";
+        byte[] fileBytes = file.getBytes();
+        String contentHash = calculateSha256(fileBytes);
 
-        // Extract face embeddings
-        EmbeddingResponseDto embeddingResponse = faceEmbeddingService.getAllFaces(file);
-        if (embeddingResponse == null || embeddingResponse.getFaces() == null
-                || embeddingResponse.getFaces().isEmpty()) {
-            throw new FaceEmbeddingException.NoFaceDetectedException("No face detected in the image.");
+        // Deduplication check: check if an active asset with identical hash already exists in this event
+        Optional<AssetDetails> existingAssetOpt = assetRepository
+                .findFirstByEventIdAndContentHashAndIsDeleted(event.getId(), contentHash, false);
+
+        if (existingAssetOpt.isPresent()) {
+            AssetDetails existingAsset = existingAssetOpt.get();
+            log.info("Duplicate file detected for eventId={}: hash={}, existingAssetId={}",
+                    event.getId(), contentHash, existingAsset.getId());
+            return UploadResponseDto.duplicate(
+                    existingAsset.getId(),
+                    existingAsset.getAssetUrl(),
+                    existingAsset.getThumbnailUrl(),
+                    existingAsset.getSize(),
+                    existingAsset.getEventId(),
+                    existingAsset.getSubEventId(),
+                    originalFilename,
+                    contentHash,
+                    existingAsset.getStatus()
+            );
         }
 
-        // Store the file
-        String assetUrl = storeFile(file, event.getId());
-        String thumbnailUrl = assetUrl; // placeholder — same URL until thumbnail generation is implemented
+        // Store the file to disk using SHA-256 hash prefix for safe naming
+        Path filePath = storeFileWithHash(fileBytes, originalFilename, contentHash, event.getId());
+        String assetUrl = filePath.toString().replace("\\", "/");
+        String thumbnailUrl = assetUrl; // placeholder until thumbnail service is added
 
-        // Save asset record
+        // Persist Asset Details with initial status UPLOADED
         AssetDetails asset = AssetDetails.builder()
                 .eventId(event.getId())
                 .subEventId(subEventId)
@@ -302,28 +327,44 @@ public class UploadServiceImpl implements UploadService {
                 .size(file.getSize())
                 .originalFilename(originalFilename)
                 .contentType(file.getContentType())
+                .contentHash(contentHash)
+                .status("UPLOADED")
                 .isDeleted(false)
                 .build();
 
         AssetDetails savedAsset = assetRepository.save(asset);
 
-        // Save all detected face embeddings for this asset
-        for (FaceEmbeddingDto face : embeddingResponse.getFaces()) {
-            float[] embeddingArray = convertDoubleListToFloatArray(face.getEmbedding());
-            String vectorStr = VectorConverter.convertFloatArrayToVectorString(embeddingArray);
-            faceEmbeddingRepository.insertFaceEmbedding(savedAsset.getId(), vectorStr);
-        }
+        // Queue asynchronous background face embedding processing
+        asyncFaceProcessingService.processAssetFaceEmbeddings(savedAsset.getId(), filePath);
 
-        log.info("Processed file '{}': assetId={}, faces={}, eventId={}, subEventId={}",
-                originalFilename, savedAsset.getId(), embeddingResponse.getFaces().size(),
-                event.getId(), subEventId);
+        log.info("Uploaded file '{}': assetId={}, contentHash={}, eventId={}, subEventId={}. Face processing queued.",
+                originalFilename, savedAsset.getId(), contentHash, event.getId(), subEventId);
 
-        return UploadResponseDto.success(
+        return UploadResponseDto.uploaded(
                 savedAsset.getId(), assetUrl, thumbnailUrl, file.getSize(),
-                event.getId(), subEventId, originalFilename);
+                event.getId(), subEventId, originalFilename, contentHash);
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * Calculates SHA-256 hex string for an input byte array.
+     */
+    private String calculateSha256(byte[] bytes) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(bytes);
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+            return hexString.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 algorithm not available", e);
+        }
+    }
 
     /**
      * Validates that an event (main or sub) exists, is active, and is owned by the photographer.
@@ -368,22 +409,24 @@ public class UploadServiceImpl implements UploadService {
     }
 
     /**
-     * Stores a file under the event's directory and returns the relative file path.
+     * Stores file under the event's directory using SHA-256 prefix for safety.
      */
-    private String storeFile(MultipartFile file, Long eventId) throws IOException {
+    private Path storeFileWithHash(byte[] bytes, String originalFilename, String contentHash, Long eventId) throws IOException {
         Path eventDir = Paths.get(uploadDir, "event_" + eventId);
         if (!Files.exists(eventDir)) {
             Files.createDirectories(eventDir);
         }
 
-        String originalFilename = file.getOriginalFilename();
-        String filename = System.currentTimeMillis() + "_" + originalFilename;
+        String hashPrefix = contentHash != null && contentHash.length() >= 12 ? contentHash.substring(0, 12) : "img";
+        String sanitizedFilename = originalFilename != null ? originalFilename.replaceAll("[^a-zA-Z0-9._-]", "_") : "file.jpg";
+        String filename = System.currentTimeMillis() + "_" + hashPrefix + "_" + sanitizedFilename;
 
         Path filePath = eventDir.resolve(filename);
-        Files.copy(file.getInputStream(), filePath);
+        Files.write(filePath, bytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
 
-        return filePath.toString().replace("\\", "/");
+        return filePath;
     }
+
 
     /**
      * Converts a Double list to a float array for pgvector compatibility.

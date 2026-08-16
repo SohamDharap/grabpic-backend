@@ -34,6 +34,13 @@ public interface AssetRepository extends JpaRepository<AssetDetails, Long> {
     long countByEventId(Long eventId);
 
     long countBySubEventId(Long subEventId);
+
+    /** Find duplicate asset by content hash within the same event. */
+    java.util.Optional<AssetDetails> findFirstByEventIdAndContentHashAndIsDeleted(Long eventId, String contentHash, Boolean isDeleted);
+
+    /** Find assets by event ID and processing status. */
+    List<AssetDetails> findByEventIdAndStatusAndIsDeleted(Long eventId, String status, Boolean isDeleted);
 }
+
 
 

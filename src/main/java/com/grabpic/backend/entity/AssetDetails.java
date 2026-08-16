@@ -44,9 +44,23 @@ public class AssetDetails {
     @Column(name = "content_type", length = 100)
     private String contentType;
 
+    /**
+     * Processing status: UPLOADED, PROCESSING, COMPLETED, FAILED, SKIPPED
+     */
+    @Column(name = "status", length = 50)
+    @Builder.Default
+    private String status = "UPLOADED";
+
+    @Column(name = "failure_reason", length = 1000)
+    private String failureReason;
+
+    @Column(name = "content_hash", length = 64)
+    private String contentHash;
+
     @Column(name = "is_deleted", nullable = false)
     @Builder.Default
     private Boolean isDeleted = false;
+
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

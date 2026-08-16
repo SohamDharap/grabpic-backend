@@ -12,12 +12,49 @@ public class UploadResponseDto {
     private Long eventId;
     private Long subEventId;
     private String originalFilename;
+    private String contentHash;
+    private String failureReason;
     private String message;
 
+
     /**
-     * Per-file upload status: SUCCESS, FAILURE, or SKIPPED (e.g., no face detected).
+     * Per-file upload status: UPLOADED, PROCESSING, SUCCESS (COMPLETED), FAILURE, or SKIPPED.
      */
     private String status;
+
+    public static UploadResponseDto uploaded(Long assetId, String assetUrl, String thumbnailUrl,
+                                             Long size, Long eventId, Long subEventId,
+                                             String originalFilename, String contentHash) {
+        UploadResponseDto response = new UploadResponseDto();
+        response.setAssetId(assetId);
+        response.setAssetUrl(assetUrl);
+        response.setThumbnailUrl(thumbnailUrl);
+        response.setSize(size);
+        response.setEventId(eventId);
+        response.setSubEventId(subEventId);
+        response.setOriginalFilename(originalFilename);
+        response.setContentHash(contentHash);
+        response.setStatus("UPLOADED");
+        response.setMessage("File uploaded successfully. Face processing queued in background.");
+        return response;
+    }
+
+    public static UploadResponseDto duplicate(Long assetId, String assetUrl, String thumbnailUrl,
+                                              Long size, Long eventId, Long subEventId,
+                                              String originalFilename, String contentHash, String existingStatus) {
+        UploadResponseDto response = new UploadResponseDto();
+        response.setAssetId(assetId);
+        response.setAssetUrl(assetUrl);
+        response.setThumbnailUrl(thumbnailUrl);
+        response.setSize(size);
+        response.setEventId(eventId);
+        response.setSubEventId(subEventId);
+        response.setOriginalFilename(originalFilename);
+        response.setContentHash(contentHash);
+        response.setStatus(existingStatus != null ? existingStatus : "COMPLETED");
+        response.setMessage("Duplicate file detected for this event; existing asset reused.");
+        return response;
+    }
 
     public static UploadResponseDto success(Long assetId, String assetUrl, String thumbnailUrl,
                                             Long size, Long eventId, Long subEventId,
@@ -47,6 +84,7 @@ public class UploadResponseDto {
         UploadResponseDto response = new UploadResponseDto();
         response.setStatus("FAILURE");
         response.setMessage(message);
+        response.setFailureReason(message);
         return response;
     }
 
@@ -55,6 +93,7 @@ public class UploadResponseDto {
         response.setOriginalFilename(originalFilename);
         response.setStatus("FAILURE");
         response.setMessage(message);
+        response.setFailureReason(message);
         return response;
     }
 
@@ -63,7 +102,9 @@ public class UploadResponseDto {
         response.setOriginalFilename(originalFilename);
         response.setStatus("SKIPPED");
         response.setMessage(message);
+        response.setFailureReason(message);
         return response;
     }
 }
+
 
