@@ -4,7 +4,9 @@ import com.grabpic.backend.dto.request.CreateEventDto;
 import com.grabpic.backend.dto.request.CreateSubEventDto;
 import com.grabpic.backend.dto.request.UpdateEventDto;
 import com.grabpic.backend.dto.response.EventResponseDto;
+import com.grabpic.backend.dto.response.PublicEventDetailsDto;
 import com.grabpic.backend.entity.EventDetails;
+
 import com.grabpic.backend.repository.AssetRepository;
 import com.grabpic.backend.repository.EventRepository;
 import com.grabpic.backend.service.EventService;
@@ -54,12 +56,28 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
+
     public EventResponseDto getEventByPublicToken(String publicToken) {
         UUID tokenUuid = UUID.fromString(publicToken);
         EventDetails event = eventRepository.findByPublicTokenAndIsActive(tokenUuid, true)
                 .orElseThrow(() -> new RuntimeException("Event not found or inactive"));
         return mapToResponseDto(event, false);
     }
+
+    @Override
+    public PublicEventDetailsDto getPublicEventDetails(String publicToken) {
+        UUID tokenUuid = UUID.fromString(publicToken);
+        EventDetails event = eventRepository.findByPublicTokenAndIsActive(tokenUuid, true)
+                .orElseThrow(() -> new RuntimeException("Event not found or inactive"));
+        return PublicEventDetailsDto.builder()
+                .name(event.getName())
+                .venue(event.getVenue())
+                .eventDate(event.getEventDate())
+                .description(event.getDescription())
+                .ownerName(event.getOwnerName())
+                .build();
+    }
+
 
     @Override
     public EventResponseDto getEventById(Long eventId, Long photographerId) {

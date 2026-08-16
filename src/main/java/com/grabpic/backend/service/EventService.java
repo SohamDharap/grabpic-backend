@@ -4,8 +4,11 @@ import com.grabpic.backend.dto.request.CreateEventDto;
 import com.grabpic.backend.dto.request.CreateSubEventDto;
 import com.grabpic.backend.dto.request.UpdateEventDto;
 import com.grabpic.backend.dto.response.EventResponseDto;
+import com.grabpic.backend.dto.response.PublicEventDetailsDto;
+
 
 import java.util.List;
+
 
 public interface EventService {
 
@@ -16,6 +19,9 @@ public interface EventService {
     List<EventResponseDto> getEventsByPhotographer(Long photographerId);
 
     EventResponseDto getEventByPublicToken(String publicToken);
+
+    PublicEventDetailsDto getPublicEventDetails(String publicToken);
+
 
     EventResponseDto getEventById(Long eventId, Long photographerId);
 
