@@ -63,8 +63,8 @@ public class FaceEmbeddingServiceImpl implements FaceEmbeddingService {
 
             if (response.getStatusCode() == HttpStatus.OK) {
                 EmbeddingResponseDto responseDto = objectMapper.readValue(response.getBody(), EmbeddingResponseDto.class);
-                if (responseDto == null || responseDto.getFaces() == null || responseDto.getFaces().isEmpty()) {
-                    throw new FaceEmbeddingException.NoFaceDetectedException("No face detected in the image.");
+                if (responseDto == null || responseDto.getFaces() == null) {
+                    return EmbeddingResponseDto.builder().faces(java.util.Collections.emptyList()).build();
                 }
                 log.info("Successfully detected {} face(s) in image {}", responseDto.getFaces().size(), file.getOriginalFilename());
                 return responseDto;
@@ -75,9 +75,10 @@ public class FaceEmbeddingServiceImpl implements FaceEmbeddingService {
 
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
-                log.warn("No face detected in image: {}", file.getOriginalFilename());
-                throw new FaceEmbeddingException.NoFaceDetectedException("No face detected in the image");
+                log.info("No face detected in image (venue/decoration photo): {}", file.getOriginalFilename());
+                return EmbeddingResponseDto.builder().faces(java.util.Collections.emptyList()).build();
             } else if (e.getStatusCode() == HttpStatus.BAD_REQUEST) {
+
                 log.warn("Invalid/corrupt image file: {}", file.getOriginalFilename());
                 throw new FaceEmbeddingException.InvalidImageException("Unable to decode or invalid image file format.");
             } else {

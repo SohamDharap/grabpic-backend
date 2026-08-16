@@ -192,21 +192,25 @@ class UploadServiceTest {
     }
 
     @Test
-    @DisplayName("Async face processing sets status to SKIPPED when no face is detected")
-    void testAsyncFaceProcessing_NoFaceDetected() throws Exception {
-        Path tempFile = Files.createTempFile("test_noface_", ".jpg");
-        Files.write(tempFile, "no-face-bytes".getBytes());
+    @DisplayName("Async processing completes non-face photos (venue/decorations) with COMPLETED status and 0 embeddings")
+    void testAsyncFaceProcessing_VenuePhotoWithoutFace() throws Exception {
+        Path tempFile = Files.createTempFile("test_venue_", ".jpg");
+        Files.write(tempFile, "venue-stage-bytes".getBytes());
 
         AssetDetails asset = AssetDetails.builder()
                 .id(20L)
                 .eventId(eventId)
-                .originalFilename("landscape.jpg")
+                .originalFilename("stage_decorations.jpg")
                 .status("UPLOADED")
                 .build();
 
         when(assetRepository.findById(20L)).thenReturn(Optional.of(asset));
-        when(faceEmbeddingService.getAllFaces(any(MultipartFile.class)))
-                .thenThrow(new FaceEmbeddingException.NoFaceDetectedException("No face detected in image."));
+
+        // Return 0 faces detected (decoration/scenery photo)
+        EmbeddingResponseDto emptyFacesResponse = EmbeddingResponseDto.builder()
+                .faces(List.of())
+                .build();
+        when(faceEmbeddingService.getAllFaces(any(MultipartFile.class))).thenReturn(emptyFacesResponse);
 
         asyncFaceProcessingServiceReal.processAssetFaceEmbeddings(20L, tempFile);
 
@@ -214,11 +218,13 @@ class UploadServiceTest {
         verify(assetRepository, atLeastOnce()).save(assetCaptor.capture());
 
         AssetDetails finalAsset = assetCaptor.getValue();
-        assertEquals("SKIPPED", finalAsset.getStatus());
-        assertNotNull(finalAsset.getFailureReason());
+        assertEquals("COMPLETED", finalAsset.getStatus());
+        assertNull(finalAsset.getFailureReason());
 
+        // 0 face embeddings inserted
         verify(faceEmbeddingRepository, never()).insertFaceEmbedding(anyLong(), anyString());
 
         Files.deleteIfExists(tempFile);
     }
 }
+

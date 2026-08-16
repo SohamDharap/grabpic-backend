@@ -60,31 +60,26 @@ public class AsyncFaceProcessingServiceImpl implements AsyncFaceProcessingServic
             // 2. Call InsightFace service
             EmbeddingResponseDto responseDto = faceEmbeddingService.getAllFaces(multipartFile);
 
-            if (responseDto == null || responseDto.getFaces() == null || responseDto.getFaces().isEmpty()) {
-                throw new FaceEmbeddingException.NoFaceDetectedException("No face detected in the image.");
+            int faceCount = 0;
+            if (responseDto != null && responseDto.getFaces() != null) {
+                faceCount = responseDto.getFaces().size();
+                // 3. Save face embeddings into pgvector repository
+                for (FaceEmbeddingDto face : responseDto.getFaces()) {
+                    float[] embeddingArray = convertDoubleListToFloatArray(face.getEmbedding());
+                    String vectorStr = VectorConverter.convertFloatArrayToVectorString(embeddingArray);
+                    faceEmbeddingRepository.insertFaceEmbedding(asset.getId(), vectorStr);
+                }
             }
 
-            // 3. Save face embeddings into pgvector repository
-            for (FaceEmbeddingDto face : responseDto.getFaces()) {
-                float[] embeddingArray = convertDoubleListToFloatArray(face.getEmbedding());
-                String vectorStr = VectorConverter.convertFloatArrayToVectorString(embeddingArray);
-                faceEmbeddingRepository.insertFaceEmbedding(asset.getId(), vectorStr);
-            }
-
-            // 4. Mark status COMPLETED
+            // 4. Mark status COMPLETED for all valid event photos (whether containing faces or venue/decorations)
             asset.setStatus("COMPLETED");
             asset.setFailureReason(null);
             assetRepository.save(asset);
 
-            log.info("Successfully processed face embeddings for assetId={}: detected {} face(s)",
-                    assetId, responseDto.getFaces().size());
+            log.info("Successfully processed assetId={}: saved file with {} detected face(s).", assetId, faceCount);
 
-        } catch (FaceEmbeddingException.NoFaceDetectedException e) {
-            log.warn("No face detected for assetId={}: {}", assetId, e.getMessage());
-            asset.setStatus("SKIPPED");
-            asset.setFailureReason("No face detected — image skipped.");
-            assetRepository.save(asset);
         } catch (FaceEmbeddingException.ServiceUnavailableException e) {
+
             log.error("Face embedding service unavailable for assetId={}: {}", assetId, e.getMessage());
             asset.setStatus("FAILED");
             asset.setFailureReason("Face detection service unavailable.");
