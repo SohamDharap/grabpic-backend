@@ -4,6 +4,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -33,6 +34,20 @@ public final class FileValidationUtil {
     public static boolean isValidImageFile(MultipartFile file) {
         String contentType = file.getContentType();
         return contentType != null && ALLOWED_IMAGE_TYPES.contains(contentType.toLowerCase());
+    }
+
+    /**
+     * Validates image content type against a configurable list of allowed types.
+     */
+    public static boolean isAllowedContentType(MultipartFile file, List<String> allowedTypes) {
+        if (file == null || file.getContentType() == null) {
+            return false;
+        }
+        String contentType = file.getContentType().toLowerCase();
+        if (allowedTypes == null || allowedTypes.isEmpty()) {
+            return ALLOWED_IMAGE_TYPES.contains(contentType);
+        }
+        return allowedTypes.stream().anyMatch(t -> t.equalsIgnoreCase(contentType));
     }
 
     /**

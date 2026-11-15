@@ -1,340 +1,951 @@
 {
-	"info": {
-		"_postman_id": "grabpic-backend-collection-v2",
-		"name": "GrabPic Backend API",
-		"description": "GrabPic backend REST API — OTP auth, admin photographer management, event CRUD, photo upload with face detection, and public face search.\n\nBase URL: {{baseUrl}}\nAuth: Bearer {{jwtToken}} (set automatically after Verify OTP, or paste manually)\n\nPublic routes (no JWT): /api/auth/**, /api/public/**\nAdmin routes: ROLE_ADMIN\nEvent/Upload routes: ROLE_PHOTOGRAPHER or ROLE_ADMIN",
-		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-	},
-	"variable": [
-		{
-			"key": "baseUrl",
-			"value": "http://localhost:8080",
-			"type": "string"
-		},
-		{
-			"key": "jwtToken",
-			"value": "",
-			"type": "string"
-		},
-		{
-			"key": "photographerEmail",
-			"value": "photographer@grabpic.com",
-			"type": "string"
-		},
-		{
-			"key": "adminEmail",
-			"value": "admin@grabpic.com",
-			"type": "string"
-		},
-		{
-			"key": "eventId",
-			"value": "1",
-			"type": "string"
-		},
-		{
-			"key": "publicToken",
-			"value": "550e8400-e29b-41d4-a716-446655440000",
-			"type": "string"
-		},
-		{
-			"key": "photographerId",
-			"value": "1",
-			"type": "string"
-		}
-	],
-	"auth": {
-		"type": "bearer",
-		"bearer": [
-			{
-				"key": "token",
-				"value": "{{jwtToken}}",
-				"type": "string"
-			}
-		]
-	},
-	"item": [
-		{
-			"name": "1. Authentication",
-			"description": "OTP-based login. No JWT required.",
-			"item": [
-				{
-					"name": "Request OTP",
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"email\": \"{{photographerEmail}}\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/auth/request-otp",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "auth", "request-otp"]
-						},
-						"description": "Step 1: Send a 6-digit OTP to an existing active user's email. OTP expires in 10 minutes (max 3 attempts)."
-					},
-					"response": []
-				},
-				{
-					"name": "Verify OTP & Get JWT",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"if (pm.response.code === 200) {",
-									"    const json = pm.response.json();",
-									"    if (json.token) {",
-									"        pm.collectionVariables.set('jwtToken', json.token);",
-									"        console.log('JWT saved to collection variable jwtToken');",
-									"    }",
-									"}"
-								]
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"email\": \"{{photographerEmail}}\",\n    \"otp\": \"123456\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/auth/verify-otp",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "auth", "verify-otp"]
-						},
-						"description": "Step 2: Verify OTP and receive JWT. Response: { token, email, role }. Token is auto-saved to {{jwtToken}}."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "2. Admin — Photographer Management",
-			"description": "Requires ROLE_ADMIN JWT.",
-			"item": [
-				{
-					"name": "Create Photographer",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"firstname\": \"John\",\n    \"lastname\": \"Doe\",\n    \"email\": \"newphotographer@grabpic.com\",\n    \"phoneNumber\": \"9876543210\",\n    \"gender\": \"MALE\",\n    \"age\": 25\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/admin/photographers",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "admin", "photographers"]
-						},
-						"description": "Create a new photographer account. Required: firstname, lastname, email. Optional: phoneNumber (10 digits), gender (MALE|FEMALE|OTHER), age."
-					},
-					"response": []
-				},
-				{
-					"name": "Get All Photographers",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/admin/photographers",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "admin", "photographers"]
-						},
-						"description": "List all users with PHOTOGRAPHER role."
-					},
-					"response": []
-				},
-				{
-					"name": "Activate Photographer",
-					"request": {
-						"method": "PUT",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/admin/photographers/{{photographerId}}/activate",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "admin", "photographers", "{{photographerId}}", "activate"]
-						},
-						"description": "Activate a photographer by ID."
-					},
-					"response": []
-				},
-				{
-					"name": "Deactivate Photographer",
-					"request": {
-						"method": "PUT",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/admin/photographers/{{photographerId}}/deactivate",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "admin", "photographers", "{{photographerId}}", "deactivate"]
-						},
-						"description": "Deactivate a photographer by ID."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "3. Events",
-			"description": "Requires ROLE_PHOTOGRAPHER or ROLE_ADMIN JWT.",
-			"item": [
-				{
-					"name": "Create Event",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"if (pm.response.code === 200) {",
-									"    const json = pm.response.json();",
-									"    if (json.id) pm.collectionVariables.set('eventId', String(json.id));",
-									"    if (json.publicToken) pm.collectionVariables.set('publicToken', json.publicToken);",
-									"}"
-								]
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"name\": \"Birthday Party\",\n    \"venue\": \"Community Hall\",\n    \"eventDate\": \"2026-05-15T18:00:00\",\n    \"ownerName\": \"John Doe\",\n    \"ownerContact\": \"9876543210\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/events",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "events"]
-						},
-						"description": "Create an event for the authenticated photographer. Required: name. Optional: venue, eventDate (ISO-8601), ownerName, ownerContact. Returns publicToken for guest search link."
-					},
-					"response": []
-				},
-				{
-					"name": "Get My Events",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/events",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "events"]
-						},
-						"description": "List active events belonging to the authenticated photographer (from JWT userId)."
-					},
-					"response": []
-				},
-				{
-					"name": "Get Event by Public Token",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/events/public/{{publicToken}}",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "events", "public", "{{publicToken}}"]
-						},
-						"description": "Fetch active event details by publicToken UUID. Note: currently requires photographer/admin JWT (path is under /api/events/**)."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "4. Photo Upload",
-			"description": "Requires ROLE_PHOTOGRAPHER or ROLE_ADMIN JWT.",
-			"item": [
-				{
-					"name": "Upload Photo (Face Detection)",
-					"request": {
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "formdata",
-							"formdata": [
-								{
-									"key": "file",
-									"type": "file",
-									"src": [],
-									"description": "JPEG or PNG image with a detectable face"
-								}
-							]
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/events/{{eventId}}/upload",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "events", "{{eventId}}", "upload"]
-						},
-						"description": "Upload event photo. Multipart form field: file (JPEG/PNG). Validates event ownership, detects face, stores file and pgvector embedding. Returns UploadResponseDto or error if no face detected."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "5. Public Face Search",
-			"description": "No JWT required. Used by event guests to find their photos.",
-			"item": [
-				{
-					"name": "Search Photos by Selfie",
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "POST",
-						"header": [],
-						"body": {
-							"mode": "formdata",
-							"formdata": [
-								{
-									"key": "selfie",
-									"type": "file",
-									"src": [],
-									"description": "Guest selfie (JPEG or PNG)"
-								}
-							]
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/public/event/{{publicToken}}/search",
-							"host": ["{{baseUrl}}"],
-							"path": ["api", "public", "event", "{{publicToken}}", "search"]
-						},
-						"description": "Find matching event photos by face similarity. Multipart form field: selfie. Returns up to 20 matches with similarityScore (threshold ≤ 0.7 distance)."
-					},
-					"response": []
-				}
-			]
-		}
-	]
+  "info": {
+    "_postman_id": "grabpic-api-collection-v3",
+    "name": "GrabPic Backend API",
+    "description": "Complete sequential Postman collection for GrabPic Backend.\n\nAll APIs are grouped into logical, end-to-end workflow folders and numbered in execution order.\n\n**Base URL:** `{{baseUrl}}`\n\n## Auto-Captured Variables\n- `verify-otp` → auto-saves `{{authToken}}`\n- `Create Event` → auto-saves `{{eventId}}` and `{{publicToken}}`\n- `Create Sub-Event` → auto-saves `{{subEventId}}`",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string",
+      "description": "Backend server base URL"
+    },
+    {
+      "key": "authToken",
+      "value": "",
+      "type": "string",
+      "description": "JWT Bearer token — auto-set by Step 2 Verify OTP"
+    },
+    {
+      "key": "eventId",
+      "value": "1",
+      "type": "string",
+      "description": "Main event ID — auto-set by Create Event"
+    },
+    {
+      "key": "subEventId",
+      "value": "1",
+      "type": "string",
+      "description": "Sub-event ID — auto-set by Create Sub-Event"
+    },
+    {
+      "key": "assetId",
+      "value": "1",
+      "type": "string",
+      "description": "Photo asset ID for photo deletion"
+    },
+    {
+      "key": "photographerId",
+      "value": "1",
+      "type": "string",
+      "description": "Photographer ID for admin APIs"
+    },
+    {
+      "key": "publicToken",
+      "value": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "type": "string",
+      "description": "Public UUID token of an event — auto-set by Create Event"
+    }
+  ],
+  "item": [
+    {
+      "name": "🔐 0. Auth Flow",
+      "description": "Step 1: Request OTP → Step 2: Verify OTP and auto-save JWT token.",
+      "item": [
+        {
+          "name": "01 - Request OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/request-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "request-otp"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"photographer@example.com\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Step 1: Sends a 6-digit OTP to the user's email address. In dev mode, hardcoded OTP `123456` can be used."
+          },
+          "response": [
+            {
+              "name": "200 OK — OTP Sent",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"message\": \"If an account with this email exists, you will receive an OTP on your registered email.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "02 - Verify OTP & Get Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const json = pm.response.json();",
+                  "    pm.collectionVariables.set('authToken', json.token);",
+                  "    console.log('✅ Auth token saved:', json.token.substring(0, 30) + '...');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/verify-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "verify-otp"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"photographer@example.com\",\n  \"otp\": \"123456\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Step 2: Verifies OTP and returns JWT token. The test script automatically saves `authToken` into variables."
+          },
+          "response": [
+            {
+              "name": "200 OK — Token Returned",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.SampleToken\",\n  \"email\": \"photographer@example.com\",\n  \"role\": \"PHOTOGRAPHER\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🗂️ 1. Main Events Flow",
+      "description": "Complete lifecycle for main events: Create → View → Update → Upload Photos → List Photos → Delete Photo → Delete Event.",
+      "item": [
+        {
+          "name": "01 - Create Main Event",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const json = pm.response.json();",
+                  "    pm.collectionVariables.set('eventId', json.id);",
+                  "    pm.collectionVariables.set('publicToken', json.publicToken);",
+                  "    console.log('✅ eventId saved:', json.id);",
+                  "    console.log('✅ publicToken saved:', json.publicToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sharma Wedding 2026\",\n  \"venue\": \"The Grand Banquet Hall, Mumbai\",\n  \"eventDate\": \"2026-12-15T18:00:00\",\n  \"ownerName\": \"Ramesh Sharma\",\n  \"ownerContact\": \"9876543210\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Creates a main event. Auto-saves `eventId` and `publicToken`."
+          },
+          "response": [
+            {
+              "name": "200 OK — Event Created",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": 1,\n  \"name\": \"Sharma Wedding 2026\",\n  \"venue\": \"The Grand Banquet Hall, Mumbai\",\n  \"eventDate\": \"2026-12-15T18:00:00\",\n  \"ownerName\": \"Ramesh Sharma\",\n  \"ownerContact\": \"9876543210\",\n  \"photographerId\": 3,\n  \"publicToken\": \"a3f1c2d4-0e5b-4f6a-b7c8-d9e0f1a2b3c4\",\n  \"isActive\": true,\n  \"subEvents\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "02 - Get All My Events",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events"]
+            },
+            "description": "Fetches all main events belonging to logged-in photographer."
+          },
+          "response": [
+            {
+              "name": "200 OK — Events List",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "[\n  {\n    \"id\": 1,\n    \"name\": \"Sharma Wedding 2026\",\n    \"venue\": \"The Grand Banquet Hall, Mumbai\",\n    \"publicToken\": \"a3f1c2d4-0e5b-4f6a-b7c8-d9e0f1a2b3c4\"\n  }\n]"
+            }
+          ]
+        },
+        {
+          "name": "03 - Get Event Details by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}"]
+            },
+            "description": "Fetches details of a specific main event by ID including its nested sub-events."
+          },
+          "response": [
+            {
+              "name": "200 OK — Event Details",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": 1,\n  \"name\": \"Sharma Wedding 2026\",\n  \"venue\": \"The Grand Banquet Hall, Mumbai\",\n  \"subEvents\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "04 - Update Event Details",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sharma Wedding 2026 — Updated\",\n  \"venue\": \"The Royal Palace, Jaipur\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Updates main event details."
+          },
+          "response": [
+            {
+              "name": "200 OK — Updated",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": 1,\n  \"name\": \"Sharma Wedding 2026 — Updated\",\n  \"venue\": \"The Royal Palace, Jaipur\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "05 - Upload Single Photo to Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}/upload",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}", "upload"]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": "", "description": "Single image file (JPEG, PNG, WebP)" }
+              ]
+            },
+            "description": "Uploads single image to main event. Max single file size: 100MB."
+          },
+          "response": [
+            {
+              "name": "200 OK — Photo Uploaded",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"assetId\": 42,\n  \"assetUrl\": \"uploads/event_1/1753960000000_DSC_0042.jpg\",\n  \"thumbnailUrl\": \"uploads/event_1/1753960000000_DSC_0042.jpg\",\n  \"size\": 2048576,\n  \"eventId\": 1,\n  \"subEventId\": null,\n  \"originalFilename\": \"DSC_0042.jpg\",\n  \"status\": \"SUCCESS\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "06 - Upload Bulk Photos to Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}/upload/bulk",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}", "upload", "bulk"]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "files", "type": "file", "src": [], "description": "Multiple image files (up to 100 files, max 500MB total)" }
+              ]
+            },
+            "description": "Uploads multiple images in bulk (up to 100 files)."
+          },
+          "response": [
+            {
+              "name": "200 OK — Bulk Upload Result",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"totalFiles\": 2,\n  \"successCount\": 2,\n  \"results\": [\n    {\n      \"assetId\": 42,\n      \"assetUrl\": \"uploads/event_1/img1.jpg\",\n      \"status\": \"SUCCESS\"\n    },\n    {\n      \"assetId\": 43,\n      \"assetUrl\": \"uploads/event_1/img2.jpg\",\n      \"status\": \"SUCCESS\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "07 - Upload ZIP Archive to Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}/upload/zip",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}", "upload", "zip"]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": "", "description": "ZIP archive containing image files (up to 500MB)" }
+              ]
+            },
+            "description": "Uploads a ZIP archive containing images."
+          },
+          "response": [
+            {
+              "name": "200 OK — ZIP Processed",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"totalFiles\": 10,\n  \"successCount\": 10,\n  \"results\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "08 - Get All Event Photos",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}/photos",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}", "photos"]
+            },
+            "description": "Returns all photos uploaded to the main event."
+          },
+          "response": [
+            {
+              "name": "200 OK — Photos List",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "[\n  {\n    \"assetId\": 42,\n    \"assetUrl\": \"uploads/event_1/1753960000000_DSC_0042.jpg\",\n    \"thumbnailUrl\": \"uploads/event_1/1753960000000_DSC_0042.jpg\",\n    \"size\": 2048576,\n    \"eventId\": 1,\n    \"subEventId\": null,\n    \"originalFilename\": \"DSC_0042.jpg\",\n    \"status\": \"SUCCESS\"\n  }\n]"
+            }
+          ]
+        },
+        {
+          "name": "09 - Hard Delete Single Photo",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}/photos/{{assetId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}", "photos", "{{assetId}}"]
+            },
+            "description": "Hard deletes a single photo: removes face embeddings, physical file from disk, and DB asset record."
+          },
+          "response": [
+            {
+              "name": "200 OK — Photo Deleted",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Photo asset id=42 deleted successfully.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "10 - Hard Delete Main Event (Cascading)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}"]
+            },
+            "description": "Hard-deletes main event, all child sub-events, all associated photos, face embeddings, and physical files on disk."
+          },
+          "response": [
+            {
+              "name": "204 No Content — Event Hard Deleted",
+              "status": "No Content",
+              "code": 204,
+              "header": [],
+              "body": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "📁 2. Sub-Events Flow",
+      "description": "Lifecycle for nested sub-events: Create → View → Update → Upload Photos → List Photos → Delete Sub-Event.",
+      "item": [
+        {
+          "name": "01 - Create Sub-Event",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const json = pm.response.json();",
+                  "    pm.collectionVariables.set('subEventId', json.id);",
+                  "    console.log('✅ subEventId saved:', json.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}/sub-events",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}", "sub-events"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mehendi Ceremony\",\n  \"venue\": \"Garden Area, Grand Banquet Hall\",\n  \"eventDate\": \"2026-12-14T17:00:00\",\n  \"ownerName\": \"Ramesh Sharma\",\n  \"ownerContact\": \"9876543210\",\n  \"description\": \"Mehendi celebration\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Creates a sub-event under main event `eventId`. Auto-saves `subEventId`."
+          },
+          "response": [
+            {
+              "name": "200 OK — Sub-Event Created",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": 2,\n  \"name\": \"Mehendi Ceremony\",\n  \"parentEventId\": 1,\n  \"isActive\": true\n}"
+            }
+          ]
+        },
+        {
+          "name": "02 - Get All Sub-Events",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}/sub-events",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}", "sub-events"]
+            },
+            "description": "Returns all sub-events belonging to parent event."
+          },
+          "response": [
+            {
+              "name": "200 OK — Sub-Events List",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "[\n  {\n    \"id\": 2,\n    \"name\": \"Mehendi Ceremony\",\n    \"parentEventId\": 1\n  }\n]"
+            }
+          ]
+        },
+        {
+          "name": "03 - Get Sub-Event by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}/sub-events/{{subEventId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}", "sub-events", "{{subEventId}}"]
+            },
+            "description": "Fetches details of a specific sub-event by ID."
+          },
+          "response": [
+            {
+              "name": "200 OK — Sub-Event Details",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": 2,\n  \"name\": \"Mehendi Ceremony\",\n  \"parentEventId\": 1\n}"
+            }
+          ]
+        },
+        {
+          "name": "04 - Update Sub-Event",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}/sub-events/{{subEventId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}", "sub-events", "{{subEventId}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mehendi & Sangeet Night\",\n  \"venue\": \"Rooftop Garden\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Updates sub-event details."
+          },
+          "response": [
+            {
+              "name": "200 OK — Sub-Event Updated",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": 2,\n  \"name\": \"Mehendi & Sangeet Night\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "05 - Upload Single Photo to Sub-Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}/sub-events/{{subEventId}}/upload",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}", "sub-events", "{{subEventId}}", "upload"]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": "", "description": "Single image file for sub-event" }
+              ]
+            },
+            "description": "Uploads single photo directly to a sub-event."
+          },
+          "response": [
+            {
+              "name": "200 OK — Uploaded to Sub-Event",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"assetId\": 88,\n  \"assetUrl\": \"uploads/event_1/1753960000000_mehendi.jpg\",\n  \"eventId\": 1,\n  \"subEventId\": 2,\n  \"status\": \"SUCCESS\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "06 - Upload Bulk Photos to Sub-Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}/sub-events/{{subEventId}}/upload/bulk",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}", "sub-events", "{{subEventId}}", "upload", "bulk"]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "files", "type": "file", "src": [], "description": "Multiple image files for sub-event (up to 100 files)" }
+              ]
+            },
+            "description": "Bulk uploads multiple photos directly to a sub-event."
+          },
+          "response": [
+            {
+              "name": "200 OK — Bulk Uploaded to Sub-Event",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"totalFiles\": 2,\n  \"successCount\": 2,\n  \"results\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "07 - Upload ZIP Archive to Sub-Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}/sub-events/{{subEventId}}/upload/zip",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}", "sub-events", "{{subEventId}}", "upload", "zip"]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": "", "description": "ZIP file for sub-event (up to 500MB)" }
+              ]
+            },
+            "description": "Uploads ZIP archive directly to a sub-event."
+          },
+          "response": [
+            {
+              "name": "200 OK — ZIP Uploaded to Sub-Event",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"totalFiles\": 10,\n  \"successCount\": 10,\n  \"results\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "08 - Get Sub-Event Photos",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}/sub-events/{{subEventId}}/photos",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}", "sub-events", "{{subEventId}}", "photos"]
+            },
+            "description": "Returns all photos uploaded to a specific sub-event."
+          },
+          "response": [
+            {
+              "name": "200 OK — Sub-Event Photos List",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "[\n  {\n    \"assetId\": 88,\n    \"assetUrl\": \"uploads/event_1/1753960000000_mehendi.jpg\",\n    \"eventId\": 1,\n    \"subEventId\": 2,\n    \"status\": \"SUCCESS\"\n  }\n]"
+            }
+          ]
+        },
+        {
+          "name": "09 - Hard Delete Sub-Event (Cascading)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/{{eventId}}/sub-events/{{subEventId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "{{eventId}}", "sub-events", "{{subEventId}}"]
+            },
+            "description": "Hard-deletes sub-event and all its associated photos, face embeddings, and physical files on disk."
+          },
+          "response": [
+            {
+              "name": "204 No Content — Sub-Event Hard Deleted",
+              "status": "No Content",
+              "code": 204,
+              "header": [],
+              "body": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🌐 3. Public Guest Flow",
+      "description": "Public guest flow (No Authentication required): View Event Info → View Event Photos → Face Search by Selfie.",
+      "item": [
+        {
+          "name": "01 - Get Event Info by Public Token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/events/public/{{publicToken}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "events", "public", "{{publicToken}}"]
+            },
+            "description": "Public guest API to view event details using the public UUID token."
+          },
+          "response": [
+            {
+              "name": "200 OK — Public Event Info",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": 1,\n  \"name\": \"Sharma Wedding 2026\",\n  \"venue\": \"The Grand Banquet Hall, Mumbai\",\n  \"publicToken\": \"a3f1c2d4-0e5b-4f6a-b7c8-d9e0f1a2b3c4\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "02 - Get Public Event Photos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/public/event/{{publicToken}}/photos",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "public", "event", "{{publicToken}}", "photos"]
+            },
+            "description": "Public guest API to view all event photos."
+          },
+          "response": [
+            {
+              "name": "200 OK — Public Event Photos",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "[\n  {\n    \"assetId\": 42,\n    \"assetUrl\": \"uploads/event_1/1753960000000_DSC_0042.jpg\",\n    \"thumbnailUrl\": \"uploads/event_1/1753960000000_DSC_0042.jpg\",\n    \"status\": \"SUCCESS\"\n  }\n]"
+            }
+          ]
+        },
+        {
+          "name": "03 - Search Photos by Selfie",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/public/event/{{publicToken}}/search",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "public", "event", "{{publicToken}}", "search"]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "selfie", "type": "file", "src": "", "description": "Selfie image file for AI face matching" }
+              ]
+            },
+            "description": "Public guest API: Uploads a selfie and returns matching event photos ordered by similarity score."
+          },
+          "response": [
+            {
+              "name": "200 OK — Matching Photos Found",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "[\n  {\n    \"assetId\": 42,\n    \"assetUrl\": \"uploads/event_1/1753960000000_DSC_0042.jpg\",\n    \"thumbnailUrl\": \"uploads/event_1/1753960000000_DSC_0042.jpg\",\n    \"similarityScore\": 0.9823\n  }\n]"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "👤 4. Admin Management Flow",
+      "description": "Admin flow to create and manage photographer accounts (Requires `ADMIN` role).",
+      "item": [
+        {
+          "name": "01 - Create Photographer",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/photographers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "photographers"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstname\": \"Rahul\",\n  \"lastname\": \"Verma\",\n  \"email\": \"rahul.verma@grabpic.com\",\n  \"phoneNumber\": \"9988776655\",\n  \"gender\": \"MALE\",\n  \"age\": 28\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Creates a new photographer account."
+          },
+          "response": [
+            {
+              "name": "200 OK — Photographer Created",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": 5,\n  \"firstname\": \"Rahul\",\n  \"lastname\": \"Verma\",\n  \"email\": \"rahul.verma@grabpic.com\",\n  \"role\": \"PHOTOGRAPHER\",\n  \"isActive\": false\n}"
+            }
+          ]
+        },
+        {
+          "name": "02 - Get All Photographers",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/photographers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "photographers"]
+            },
+            "description": "Lists all photographer accounts."
+          },
+          "response": [
+            {
+              "name": "200 OK — Photographers List",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "[\n  {\n    \"id\": 3,\n    \"firstname\": \"Priya\",\n    \"email\": \"priya.nair@grabpic.com\"\n  }\n]"
+            }
+          ]
+        },
+        {
+          "name": "03 - Activate Photographer Account",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/photographers/{{photographerId}}/activate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "photographers", "{{photographerId}}", "activate"]
+            },
+            "description": "Activates a photographer account."
+          },
+          "response": [
+            {
+              "name": "200 OK — Activated",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": 5,\n  \"isActive\": true\n}"
+            }
+          ]
+        },
+        {
+          "name": "04 - Deactivate Photographer Account",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/photographers/{{photographerId}}/deactivate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "photographers", "{{photographerId}}", "deactivate"]
+            },
+            "description": "Deactivates a photographer account."
+          },
+          "response": [
+            {
+              "name": "200 OK — Deactivated",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": 5,\n  \"isActive\": false\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🩺 5. System Health Flow",
+      "description": "System status and health monitoring endpoints (No Auth required).",
+      "item": [
+        {
+          "name": "01 - Detailed System Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/system/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "system", "status"]
+            },
+            "description": "Returns full system status including application info, PostgreSQL status, CPU, JVM memory, and disk space."
+          },
+          "response": [
+            {
+              "name": "200 OK — System Status",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"application\": \"GrabPic Backend\",\n  \"status\": \"UP\",\n  \"database\": { \"status\": \"UP\" }\n}"
+            }
+          ]
+        },
+        {
+          "name": "02 - Actuator Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator", "health"]
+            },
+            "description": "Spring Boot Actuator health check endpoint."
+          },
+          "response": [
+            {
+              "name": "200 OK — Health Up",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"UP\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "03 - Actuator Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/info",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator", "info"]
+            },
+            "description": "Spring Boot Actuator build and JVM info."
+          },
+          "response": [
+            {
+              "name": "200 OK — Build Info",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"java\": { \"version\": \"21.0.3\" }\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }

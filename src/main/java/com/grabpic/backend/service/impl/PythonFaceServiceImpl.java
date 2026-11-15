@@ -1,10 +1,10 @@
 package com.grabpic.backend.service.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.grabpic.backend.config.properties.FaceServiceProperties;
 import com.grabpic.backend.service.PythonFaceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -23,12 +23,11 @@ public class PythonFaceServiceImpl implements PythonFaceService {
 
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
-
-    @Value("${python.face.service.url:http://localhost:8001/embed}")
-    private String pythonServiceUrl;
+    private final FaceServiceProperties faceServiceProperties;
 
     @Override
     public List<Double> extractFaceEmbedding(MultipartFile imageFile) {
+        String embedUrl = faceServiceProperties.getEmbedUrl();
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.MULTIPART_FORM_DATA);
@@ -44,19 +43,18 @@ public class PythonFaceServiceImpl implements PythonFaceService {
 
             HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
 
-            ResponseEntity<String> response = restTemplate.postForEntity(
-                    pythonServiceUrl, requestEntity, String.class);
+            ResponseEntity<String> response = restTemplate.postForEntity(embedUrl, requestEntity, String.class);
 
             if (response.getStatusCode() == HttpStatus.OK) {
                 @SuppressWarnings("unchecked")
-            Map<String, Object> responseMap = objectMapper.readValue(response.getBody(), Map.class);
+                Map<String, Object> responseMap = objectMapper.readValue(response.getBody(), Map.class);
                 @SuppressWarnings("unchecked")
                 List<Double> embedding = (List<Double>) responseMap.get("embedding");
-                
+
                 if (embedding == null || embedding.isEmpty()) {
                     throw new RuntimeException("No face detected in the image");
                 }
-                
+
                 log.info("Successfully extracted face embedding with {} dimensions", embedding.size());
                 return embedding;
             } else {

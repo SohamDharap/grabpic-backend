@@ -1,12 +1,14 @@
 package com.grabpic.backend.service;
 
+import com.grabpic.backend.config.properties.GcpStorageProperties;
+import com.grabpic.backend.config.properties.StorageProperties;
+import com.grabpic.backend.config.properties.UploadProperties;
 import com.grabpic.backend.dto.response.BulkUploadResponseDto;
 import com.grabpic.backend.dto.response.EmbeddingResponseDto;
 import com.grabpic.backend.dto.response.FaceEmbeddingDto;
 import com.grabpic.backend.dto.response.UploadResponseDto;
 import com.grabpic.backend.entity.AssetDetails;
 import com.grabpic.backend.entity.EventDetails;
-import com.grabpic.backend.exception.FaceEmbeddingException;
 import com.grabpic.backend.repository.AssetRepository;
 import com.grabpic.backend.repository.EventRepository;
 import com.grabpic.backend.repository.FaceEmbeddingRepository;
@@ -17,15 +19,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
@@ -51,9 +49,17 @@ class UploadServiceTest {
     @Mock
     private AsyncFaceProcessingService asyncFaceProcessingService;
 
-    @InjectMocks
-    private UploadServiceImpl uploadService;
+    @Mock
+    private StorageService storageService;
 
+    @Mock
+    private ThumbnailService thumbnailService;
+
+    private GcpStorageProperties gcpStorageProperties;
+    private UploadProperties uploadProperties;
+    private StorageProperties storageProperties;
+
+    private UploadServiceImpl uploadService;
     private AsyncFaceProcessingServiceImpl asyncFaceProcessingServiceReal;
 
     private EventDetails testEvent;
@@ -62,25 +68,58 @@ class UploadServiceTest {
 
     @BeforeEach
     void setUp() {
-        ReflectionTestUtils.setField(uploadService, "uploadDir", "target/test-uploads");
-        ReflectionTestUtils.setField(uploadService, "maxFiles", 50);
+        gcpStorageProperties = new GcpStorageProperties();
+        gcpStorageProperties.setBucket("test-bucket");
+        gcpStorageProperties.setObjectPrefix("events");
+        gcpStorageProperties.setOriginalDirectory("original");
+        gcpStorageProperties.setThumbnailDirectory("thumbnail");
+
+        uploadProperties = new UploadProperties();
+        uploadProperties.setMaxFiles(50);
+        uploadProperties.setMaxZipSizeMb(500);
+        uploadProperties.setMaxImageSizeMb(25);
+
+        storageProperties = new StorageProperties();
+        storageProperties.setUseSignedUrlsForUploadResponses(false);
+        storageProperties.setDeleteOnUploadFailure(true);
+
+        uploadService = new UploadServiceImpl(
+                eventRepository,
+                assetRepository,
+                asyncFaceProcessingService,
+                storageService,
+                thumbnailService,
+                gcpStorageProperties,
+                uploadProperties,
+                storageProperties
+        );
+
+        asyncFaceProcessingServiceReal = new AsyncFaceProcessingServiceImpl(
+                assetRepository,
+                faceEmbeddingRepository,
+                faceEmbeddingService,
+                storageService
+        );
 
         testEvent = EventDetails.builder()
                 .id(eventId)
                 .photographerId(photographerId)
                 .isActive(true)
                 .build();
-
-        asyncFaceProcessingServiceReal = new AsyncFaceProcessingServiceImpl(
-                assetRepository, faceEmbeddingRepository, faceEmbeddingService);
     }
 
     @Test
-    @DisplayName("Bulk upload saves files, sets status UPLOADED, and triggers async processing")
+    @DisplayName("Bulk upload uploads original and thumbnail to GCS, sets status UPLOADED, and triggers async processing with objectKey")
     void testUploadImages_Success() throws Exception {
         when(eventRepository.findById(eventId)).thenReturn(Optional.of(testEvent));
         when(assetRepository.findFirstByEventIdAndContentHashAndIsDeleted(eq(eventId), anyString(), eq(false)))
                 .thenReturn(Optional.empty());
+
+        when(storageService.upload(anyString(), any(byte[].class), anyString()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(thumbnailService.generateThumbnail(any(byte[].class), anyString()))
+                .thenReturn("fake-thumb-bytes".getBytes());
 
         AssetDetails mockSavedAsset = AssetDetails.builder()
                 .id(501L)
@@ -88,6 +127,8 @@ class UploadServiceTest {
                 .photographerId(photographerId)
                 .status("UPLOADED")
                 .originalFilename("photo.jpg")
+                .assetUrl("events/1/original/12345_hash_photo.jpg")
+                .thumbnailUrl("events/1/thumbnail/12345_hash_photo.jpg")
                 .build();
 
         when(assetRepository.save(any(AssetDetails.class))).thenReturn(mockSavedAsset);
@@ -104,12 +145,16 @@ class UploadServiceTest {
         assertEquals("UPLOADED", result.getStatus());
         assertEquals(501L, result.getAssetId());
 
+        // Verify storageService was called for original and thumbnail
+        verify(storageService, times(2)).upload(anyString(), any(byte[].class), anyString());
+
+        // Verify async processing was triggered with objectKey string
         verify(asyncFaceProcessingService, times(1))
-                .processAssetFaceEmbeddings(eq(501L), any(Path.class));
+                .processAssetFaceEmbeddings(eq(501L), anyString());
     }
 
     @Test
-    @DisplayName("Duplicate image upload returns existing asset status and skips re-saving")
+    @DisplayName("Duplicate image upload returns existing asset status and skips storage upload")
     void testUploadImages_DuplicateFile() {
         when(eventRepository.findById(eventId)).thenReturn(Optional.of(testEvent));
 
@@ -117,8 +162,8 @@ class UploadServiceTest {
                 .id(99L)
                 .eventId(eventId)
                 .photographerId(photographerId)
-                .assetUrl("uploads/event_1/existing.jpg")
-                .thumbnailUrl("uploads/event_1/existing.jpg")
+                .assetUrl("events/1/original/existing.jpg")
+                .thumbnailUrl("events/1/thumbnail/existing.jpg")
                 .size(100L)
                 .status("COMPLETED")
                 .build();
@@ -138,8 +183,9 @@ class UploadServiceTest {
         assertEquals(99L, result.getAssetId());
         assertTrue(result.getMessage().contains("Duplicate file detected"));
 
+        verify(storageService, never()).upload(anyString(), any(), anyString());
         verify(assetRepository, never()).save(any());
-        verify(asyncFaceProcessingService, never()).processAssetFaceEmbeddings(anyLong(), any());
+        verify(asyncFaceProcessingService, never()).processAssetFaceEmbeddings(anyLong(), anyString());
     }
 
     @Test
@@ -153,10 +199,10 @@ class UploadServiceTest {
     }
 
     @Test
-    @DisplayName("Async face processing updates status to COMPLETED when faces are detected")
+    @DisplayName("Async face processing downloads from GCS and updates status to COMPLETED when faces are detected")
     void testAsyncFaceProcessing_Success() throws Exception {
-        Path tempFile = Files.createTempFile("test_img_", ".jpg");
-        Files.write(tempFile, "sample-image-bytes".getBytes());
+        String objectKey = "events/1/original/test.jpg";
+        when(storageService.download(objectKey)).thenReturn("sample-image-bytes".getBytes());
 
         AssetDetails asset = AssetDetails.builder()
                 .id(10L)
@@ -177,7 +223,7 @@ class UploadServiceTest {
 
         when(faceEmbeddingService.getAllFaces(any(MultipartFile.class))).thenReturn(responseDto);
 
-        asyncFaceProcessingServiceReal.processAssetFaceEmbeddings(10L, tempFile);
+        asyncFaceProcessingServiceReal.processAssetFaceEmbeddings(10L, objectKey);
 
         ArgumentCaptor<AssetDetails> assetCaptor = ArgumentCaptor.forClass(AssetDetails.class);
         verify(assetRepository, atLeastOnce()).save(assetCaptor.capture());
@@ -187,15 +233,14 @@ class UploadServiceTest {
         assertNull(finalAsset.getFailureReason());
 
         verify(faceEmbeddingRepository, times(1)).insertFaceEmbedding(eq(10L), anyString());
-
-        Files.deleteIfExists(tempFile);
+        verify(storageService, times(1)).download(objectKey);
     }
 
     @Test
     @DisplayName("Async processing completes non-face photos (venue/decorations) with COMPLETED status and 0 embeddings")
     void testAsyncFaceProcessing_VenuePhotoWithoutFace() throws Exception {
-        Path tempFile = Files.createTempFile("test_venue_", ".jpg");
-        Files.write(tempFile, "venue-stage-bytes".getBytes());
+        String objectKey = "events/1/original/stage_decorations.jpg";
+        when(storageService.download(objectKey)).thenReturn("venue-stage-bytes".getBytes());
 
         AssetDetails asset = AssetDetails.builder()
                 .id(20L)
@@ -212,7 +257,7 @@ class UploadServiceTest {
                 .build();
         when(faceEmbeddingService.getAllFaces(any(MultipartFile.class))).thenReturn(emptyFacesResponse);
 
-        asyncFaceProcessingServiceReal.processAssetFaceEmbeddings(20L, tempFile);
+        asyncFaceProcessingServiceReal.processAssetFaceEmbeddings(20L, objectKey);
 
         ArgumentCaptor<AssetDetails> assetCaptor = ArgumentCaptor.forClass(AssetDetails.class);
         verify(assetRepository, atLeastOnce()).save(assetCaptor.capture());
@@ -223,8 +268,6 @@ class UploadServiceTest {
 
         // 0 face embeddings inserted
         verify(faceEmbeddingRepository, never()).insertFaceEmbedding(anyLong(), anyString());
-
-        Files.deleteIfExists(tempFile);
+        verify(storageService, times(1)).download(objectKey);
     }
 }
-

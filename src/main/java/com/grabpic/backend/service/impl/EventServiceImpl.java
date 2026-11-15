@@ -1,18 +1,23 @@
 package com.grabpic.backend.service.impl;
 
+import com.grabpic.backend.config.properties.GcpStorageProperties;
 import com.grabpic.backend.dto.request.CreateEventDto;
 import com.grabpic.backend.dto.request.CreateSubEventDto;
 import com.grabpic.backend.dto.request.UpdateEventDto;
 import com.grabpic.backend.dto.response.EventResponseDto;
 import com.grabpic.backend.dto.response.PublicEventDetailsDto;
+import com.grabpic.backend.entity.AssetDetails;
 import com.grabpic.backend.entity.EventDetails;
-
 import com.grabpic.backend.repository.AssetRepository;
 import com.grabpic.backend.repository.EventRepository;
+import com.grabpic.backend.repository.FaceEmbeddingRepository;
 import com.grabpic.backend.service.EventService;
+import com.grabpic.backend.service.StorageService;
+import com.grabpic.backend.util.ObjectKeyGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
@@ -25,7 +30,9 @@ public class EventServiceImpl implements EventService {
 
     private final EventRepository eventRepository;
     private final AssetRepository assetRepository;
-    private final com.grabpic.backend.repository.FaceEmbeddingRepository faceEmbeddingRepository;
+    private final FaceEmbeddingRepository faceEmbeddingRepository;
+    private final StorageService storageService;
+    private final GcpStorageProperties gcpStorageProperties;
 
     // ── Main event operations ────────────────────────────────────────────────
 
@@ -56,7 +63,6 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
-
     public EventResponseDto getEventByPublicToken(String publicToken) {
         UUID tokenUuid = UUID.fromString(publicToken);
         EventDetails event = eventRepository.findByPublicTokenAndIsActive(tokenUuid, true)
@@ -78,11 +84,9 @@ public class EventServiceImpl implements EventService {
                 .build();
     }
 
-
     @Override
     public EventResponseDto getEventById(Long eventId, Long photographerId) {
         EventDetails event = findOwnedMainEvent(eventId, photographerId);
-        // Include sub-events in response
         List<EventResponseDto> subEvents = eventRepository
                 .findByParentEventIdAndPhotographerIdAndIsActive(eventId, photographerId, true)
                 .stream()
@@ -103,40 +107,46 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     public void deleteEvent(Long eventId, Long photographerId) {
         EventDetails event = findOwnedMainEvent(eventId, photographerId);
 
         // 1. Hard delete all sub-events and their photos/embeddings
         List<EventDetails> subEvents = eventRepository.findByParentEventId(eventId);
         for (EventDetails subEvent : subEvents) {
-            List<com.grabpic.backend.entity.AssetDetails> subAssets = assetRepository.findBySubEventId(subEvent.getId());
-            for (com.grabpic.backend.entity.AssetDetails asset : subAssets) {
+            List<AssetDetails> subAssets = assetRepository.findBySubEventId(subEvent.getId());
+            for (AssetDetails asset : subAssets) {
                 deleteAssetCompletely(asset);
             }
             eventRepository.delete(subEvent);
-            log.info("Hard deleted sub-event id={} under parent event id={}", subEvent.getId(), eventId);
+            log.info("Deleted sub-event id={} under parent event id={}", subEvent.getId(), eventId);
         }
 
         // 2. Hard delete all main-event level assets
-        List<com.grabpic.backend.entity.AssetDetails> mainAssets = assetRepository.findByEventId(eventId);
-        for (com.grabpic.backend.entity.AssetDetails asset : mainAssets) {
+        List<AssetDetails> mainAssets = assetRepository.findByEventId(eventId);
+        for (AssetDetails asset : mainAssets) {
             deleteAssetCompletely(asset);
         }
 
-        // 3. Hard delete main event record
+        // 3. Clean up any remaining objects in GCS under event prefix
+        try {
+            String eventPrefix = ObjectKeyGenerator.generateEventPrefix(gcpStorageProperties, eventId);
+            storageService.deletePrefix(eventPrefix);
+        } catch (Exception e) {
+            log.warn("Prefix deletion for event {} had errors: {}", eventId, e.getMessage());
+        }
+
+        // 4. Hard delete main event record
         eventRepository.delete(event);
-        log.info("Hard deleted main event id={} and all associated sub-events & assets", eventId);
+        log.info("Deleted main event id={} and all associated assets from storage and DB", eventId);
     }
 
     // ── Sub-event operations ─────────────────────────────────────────────────
 
     @Override
     public EventResponseDto createSubEvent(Long parentEventId, CreateSubEventDto request, Long photographerId) {
-        // Validate parent event exists and belongs to photographer
         EventDetails parent = findOwnedMainEvent(parentEventId, photographerId);
 
-        // Circular reference guard: the parent must itself not be a sub-event (max depth = 1)
         if (parent.getParentEventId() != null) {
             throw new RuntimeException(
                     "Cannot create a sub-event of a sub-event. Only one level of nesting is supported.");
@@ -162,7 +172,6 @@ public class EventServiceImpl implements EventService {
 
     @Override
     public List<EventResponseDto> getSubEvents(Long parentEventId, Long photographerId) {
-        // Ensure the parent exists and belongs to the photographer
         findOwnedMainEvent(parentEventId, photographerId);
         return eventRepository
                 .findByParentEventIdAndPhotographerIdAndIsActive(parentEventId, photographerId, true)
@@ -189,38 +198,30 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     public void deleteSubEvent(Long parentEventId, Long subEventId, Long photographerId) {
         findOwnedMainEvent(parentEventId, photographerId);
         EventDetails subEvent = findOwnedSubEvent(subEventId, parentEventId, photographerId);
 
         // Hard delete all assets associated with this sub-event
-        List<com.grabpic.backend.entity.AssetDetails> subAssets = assetRepository.findBySubEventId(subEventId);
-        for (com.grabpic.backend.entity.AssetDetails asset : subAssets) {
+        List<AssetDetails> subAssets = assetRepository.findBySubEventId(subEventId);
+        for (AssetDetails asset : subAssets) {
             deleteAssetCompletely(asset);
         }
 
         // Hard delete sub-event record from DB
         eventRepository.delete(subEvent);
-        log.info("Hard deleted sub-event id={} under parent event id={}", subEventId, parentEventId);
+        log.info("Deleted sub-event id={} under parent event id={}", subEventId, parentEventId);
     }
-
 
     // ── Private helpers ──────────────────────────────────────────────────────
 
-    /**
-     * Finds an active main event (parentEventId IS NULL) owned by the photographer.
-     * Throws RuntimeException if not found or not owned.
-     */
     private EventDetails findOwnedMainEvent(Long eventId, Long photographerId) {
         return eventRepository.findByIdAndPhotographerIdAndIsActive(eventId, photographerId, true)
                 .filter(e -> e.getParentEventId() == null)
                 .orElseThrow(() -> new RuntimeException("Event not found with id: " + eventId));
     }
 
-    /**
-     * Finds an active sub-event owned by the photographer under a specific parent.
-     */
     private EventDetails findOwnedSubEvent(Long subEventId, Long parentEventId, Long photographerId) {
         return eventRepository.findByIdAndParentEventIdAndPhotographerIdAndIsActive(
                         subEventId, parentEventId, photographerId, true)
@@ -228,9 +229,6 @@ public class EventServiceImpl implements EventService {
                         "Sub-event not found with id: " + subEventId + " under event: " + parentEventId));
     }
 
-    /**
-     * Applies non-null fields from UpdateEventDto to the given EventDetails entity.
-     */
     private void applyUpdates(EventDetails event, UpdateEventDto request) {
         if (request.getName() != null && !request.getName().isBlank()) {
             event.setName(request.getName());
@@ -270,29 +268,24 @@ public class EventServiceImpl implements EventService {
         return response;
     }
 
-    private void deleteAssetCompletely(com.grabpic.backend.entity.AssetDetails asset) {
+    private void deleteAssetCompletely(AssetDetails asset) {
         if (asset == null) return;
         faceEmbeddingRepository.deleteByAssetId(asset.getId());
-        deletePhysicalFile(asset.getAssetUrl());
+        deleteStorageObjectQuietly(asset.getAssetUrl());
         if (asset.getThumbnailUrl() != null && !asset.getThumbnailUrl().equals(asset.getAssetUrl())) {
-            deletePhysicalFile(asset.getThumbnailUrl());
+            deleteStorageObjectQuietly(asset.getThumbnailUrl());
         }
         assetRepository.delete(asset);
-        log.info("Hard deleted asset id={}", asset.getId());
+        log.info("Deleted asset id={} from storage and database", asset.getId());
     }
 
-    private void deletePhysicalFile(String fileUrl) {
-        if (fileUrl == null || fileUrl.isBlank()) return;
+    private void deleteStorageObjectQuietly(String objectKey) {
+        if (objectKey == null || objectKey.isBlank()) return;
         try {
-            java.nio.file.Path path = java.nio.file.Paths.get(fileUrl);
-            if (java.nio.file.Files.exists(path)) {
-                java.nio.file.Files.delete(path);
-                log.info("Physically deleted file from disk: {}", fileUrl);
-            }
-        } catch (java.io.IOException e) {
-            log.warn("Failed to delete physical file {}: {}", fileUrl, e.getMessage());
+            storageService.delete(objectKey);
+            log.info("Deleted object from storage: {}", objectKey);
+        } catch (Exception e) {
+            log.warn("Failed to delete storage object {}: {}", objectKey, e.getMessage());
         }
     }
 }
-
-

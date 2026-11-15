@@ -25,10 +25,30 @@ services:
       - grabpic-network
 
   # ==========================================
-  # Spring Boot Backend
+  # Python Face Embedding Service (InsightFace + FastAPI)
+  # ==========================================
+  face-service:
+    image: ${DOCKER_USERNAME:-sohamdharap}/grabpic-face-service:${FACE_SERVICE_TAG:-latest}
+    container_name: grabpic-face-service
+    restart: unless-stopped
+    expose:
+      - "8001"
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    networks:
+      - grabpic-network
+
+  # ==========================================
+  # Spring Boot Backend (GCS Cloud Storage)
   # ==========================================
   backend:
-    image: ${DOCKER_USERNAME}/grabpic-backend:${IMAGE_TAG}
+    image: ${DOCKER_USERNAME:-sohamdharap}/grabpic-backend:${IMAGE_TAG:-latest}
     container_name: grabpic-backend
     restart: unless-stopped
     env_file:
@@ -37,13 +57,17 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/grabpic_db
       SPRING_DATASOURCE_USERNAME: grabpic_user
       SPRING_DATASOURCE_PASSWORD: grabpic_pass
+      PYTHON_FACE_SERVICE_BASE_URL: http://face-service:8001
+      STORAGE_PROVIDER: gcs
+      GCS_BUCKET_NAME: grabpic-media
+      GCS_AUTH_MODE: adc
     depends_on:
       postgres:
         condition: service_healthy
+      face-service:
+        condition: service_healthy
     ports:
       - "8080:8080"
-    volumes:
-      - ./storage:/storage
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 30s

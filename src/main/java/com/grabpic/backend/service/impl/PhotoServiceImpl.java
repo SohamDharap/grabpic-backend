@@ -1,5 +1,7 @@
 package com.grabpic.backend.service.impl;
 
+import com.grabpic.backend.config.properties.GcpStorageProperties;
+import com.grabpic.backend.config.properties.StorageProperties;
 import com.grabpic.backend.dto.response.UploadResponseDto;
 import com.grabpic.backend.entity.AssetDetails;
 import com.grabpic.backend.entity.EventDetails;
@@ -7,15 +9,13 @@ import com.grabpic.backend.repository.AssetRepository;
 import com.grabpic.backend.repository.EventRepository;
 import com.grabpic.backend.repository.FaceEmbeddingRepository;
 import com.grabpic.backend.service.PhotoService;
+import com.grabpic.backend.service.StorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -28,6 +28,9 @@ public class PhotoServiceImpl implements PhotoService {
     private final AssetRepository assetRepository;
     private final EventRepository eventRepository;
     private final FaceEmbeddingRepository faceEmbeddingRepository;
+    private final StorageService storageService;
+    private final GcpStorageProperties gcpStorageProperties;
+    private final StorageProperties storageProperties;
 
     @Override
     public List<UploadResponseDto> getPhotosByEvent(Long eventId, Long photographerId) {
@@ -61,6 +64,38 @@ public class PhotoServiceImpl implements PhotoService {
     }
 
     @Override
+    public String getOriginalPhotoUrlByPublicToken(String publicToken, Long assetId) {
+        UUID tokenUuid = UUID.fromString(publicToken);
+        EventDetails event = eventRepository.findByPublicTokenAndIsActive(tokenUuid, true)
+                .orElseThrow(() -> new RuntimeException("Event not found or inactive for token: " + publicToken));
+
+        AssetDetails asset = assetRepository.findByIdAndEventId(assetId, event.getId())
+                .orElseThrow(() -> new RuntimeException("Photo not found with id: " + assetId + " under this event"));
+
+        if (Boolean.TRUE.equals(asset.getIsDeleted())) {
+            throw new RuntimeException("Photo has been deleted: id=" + assetId);
+        }
+
+        Duration duration = Duration.ofMinutes(gcpStorageProperties.getSignedUrl().getDurationMinutes());
+        return storageService.generateSignedUrl(asset.getAssetUrl(), duration);
+    }
+
+    @Override
+    public String getOriginalPhotoUrlByPhotographer(Long eventId, Long assetId, Long photographerId) {
+        validateEventOwnership(eventId, photographerId);
+
+        AssetDetails asset = assetRepository.findByIdAndEventId(assetId, eventId)
+                .orElseThrow(() -> new RuntimeException("Photo not found with id: " + assetId + " under event id: " + eventId));
+
+        if (Boolean.TRUE.equals(asset.getIsDeleted())) {
+            throw new RuntimeException("Photo has been deleted: id=" + assetId);
+        }
+
+        Duration duration = Duration.ofMinutes(gcpStorageProperties.getSignedUrl().getDurationMinutes());
+        return storageService.generateSignedUrl(asset.getAssetUrl(), duration);
+    }
+
+    @Override
     @Transactional
     public void deletePhoto(Long eventId, Long assetId, Long photographerId) {
         validateEventOwnership(eventId, photographerId);
@@ -71,15 +106,15 @@ public class PhotoServiceImpl implements PhotoService {
         // 1. Delete face embeddings from DB
         faceEmbeddingRepository.deleteByAssetId(asset.getId());
 
-        // 2. Delete physical image file & thumbnail from disk
-        deletePhysicalFile(asset.getAssetUrl());
+        // 2. Delete original object and thumbnail object from Cloud Storage (GCS)
+        deleteStorageObjectQuietly(asset.getAssetUrl());
         if (asset.getThumbnailUrl() != null && !asset.getThumbnailUrl().equals(asset.getAssetUrl())) {
-            deletePhysicalFile(asset.getThumbnailUrl());
+            deleteStorageObjectQuietly(asset.getThumbnailUrl());
         }
 
         // 3. Hard delete asset record from DB
         assetRepository.delete(asset);
-        log.info("Hard deleted photo asset id={} from event id={}", assetId, eventId);
+        log.info("Deleted photo asset id={} from event id={}", assetId, eventId);
     }
 
     // ── Private Helpers ───────────────────────────────────────────────────────
@@ -105,27 +140,48 @@ public class PhotoServiceImpl implements PhotoService {
     }
 
     private UploadResponseDto mapToUploadResponseDto(AssetDetails asset) {
-        return UploadResponseDto.success(
+        Duration duration = Duration.ofMinutes(gcpStorageProperties.getSignedUrl().getDurationMinutes());
+
+        String displayThumbnailUrl = asset.getThumbnailUrl();
+        if (storageProperties.isGenerateSignedUrlsForThumbnails() && displayThumbnailUrl != null) {
+            try {
+                displayThumbnailUrl = storageService.generateSignedUrl(displayThumbnailUrl, duration);
+            } catch (Exception e) {
+                log.warn("Failed to generate signed URL for thumbnail key='{}': {}", asset.getThumbnailUrl(), e.getMessage());
+            }
+        }
+
+        String displayAssetUrl = null;
+        if (!storageProperties.isGenerateOriginalSignedUrlOnDemand() && asset.getAssetUrl() != null) {
+            try {
+                displayAssetUrl = storageService.generateSignedUrl(asset.getAssetUrl(), duration);
+            } catch (Exception e) {
+                log.warn("Failed to generate signed URL for asset key='{}': {}", asset.getAssetUrl(), e.getMessage());
+            }
+        }
+
+        UploadResponseDto dto = UploadResponseDto.success(
                 asset.getId(),
-                asset.getAssetUrl(),
-                asset.getThumbnailUrl(),
+                displayAssetUrl,
+                displayThumbnailUrl,
                 asset.getSize(),
                 asset.getEventId(),
                 asset.getSubEventId(),
                 asset.getOriginalFilename()
         );
+        dto.setStatus(asset.getStatus());
+        dto.setContentHash(asset.getContentHash());
+        dto.setFailureReason(asset.getFailureReason());
+        return dto;
     }
 
-    private void deletePhysicalFile(String fileUrl) {
-        if (fileUrl == null || fileUrl.isBlank()) return;
+    private void deleteStorageObjectQuietly(String objectKey) {
+        if (objectKey == null || objectKey.isBlank()) return;
         try {
-            Path path = Paths.get(fileUrl);
-            if (Files.exists(path)) {
-                Files.delete(path);
-                log.info("Physically deleted file from disk: {}", fileUrl);
-            }
-        } catch (IOException e) {
-            log.warn("Failed to delete physical file {}: {}", fileUrl, e.getMessage());
+            storageService.delete(objectKey);
+            log.info("Deleted object from storage: {}", objectKey);
+        } catch (Exception e) {
+            log.warn("Failed to delete storage object '{}': {}", objectKey, e.getMessage());
         }
     }
 }

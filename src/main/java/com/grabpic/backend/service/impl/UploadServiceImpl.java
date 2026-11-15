@@ -1,24 +1,24 @@
 package com.grabpic.backend.service.impl;
 
-import com.grabpic.backend.converter.VectorConverter;
+import com.grabpic.backend.config.properties.GcpStorageProperties;
+import com.grabpic.backend.config.properties.StorageProperties;
+import com.grabpic.backend.config.properties.UploadProperties;
 import com.grabpic.backend.dto.response.BulkUploadResponseDto;
-import com.grabpic.backend.dto.response.EmbeddingResponseDto;
-import com.grabpic.backend.dto.response.FaceEmbeddingDto;
 import com.grabpic.backend.dto.response.UploadResponseDto;
 import com.grabpic.backend.entity.AssetDetails;
 import com.grabpic.backend.entity.EventDetails;
 import com.grabpic.backend.exception.FaceEmbeddingException;
 import com.grabpic.backend.repository.AssetRepository;
 import com.grabpic.backend.repository.EventRepository;
-import com.grabpic.backend.repository.FaceEmbeddingRepository;
 import com.grabpic.backend.service.AsyncFaceProcessingService;
-import com.grabpic.backend.service.FaceEmbeddingService;
+import com.grabpic.backend.service.StorageService;
+import com.grabpic.backend.service.ThumbnailService;
 import com.grabpic.backend.service.UploadService;
+import com.grabpic.backend.util.ByteArrayMultipartFile;
 import com.grabpic.backend.util.FileValidationUtil;
+import com.grabpic.backend.util.ObjectKeyGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import com.grabpic.backend.util.ByteArrayMultipartFile;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -28,6 +28,7 @@ import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
@@ -42,19 +43,13 @@ public class UploadServiceImpl implements UploadService {
 
     private final EventRepository eventRepository;
     private final AssetRepository assetRepository;
-    private final FaceEmbeddingRepository faceEmbeddingRepository;
-    private final FaceEmbeddingService faceEmbeddingService;
     private final AsyncFaceProcessingService asyncFaceProcessingService;
+    private final StorageService storageService;
+    private final ThumbnailService thumbnailService;
 
-
-    @Value("${app.upload.dir:uploads}")
-    private String uploadDir;
-
-    @Value("${app.upload.max-files:100}")
-    private int maxFiles;
-
-    @Value("${app.upload.max-zip-size-mb:500}")
-    private long maxZipSizeMb;
+    private final GcpStorageProperties gcpStorageProperties;
+    private final UploadProperties uploadProperties;
+    private final StorageProperties storageProperties;
 
     // ── Existing single-file upload (backward compatible) ────────────────────
 
@@ -65,10 +60,10 @@ public class UploadServiceImpl implements UploadService {
             EventDetails event = validateEventOwnership(eventId, photographerId);
             return processSingleFile(file, event, null, photographerId);
         } catch (FaceEmbeddingException.NoFaceDetectedException e) {
-            log.warn("No face detected in uploaded image: {}", file.getOriginalFilename());
+            log.warn("No face detected in uploaded image: {}", file != null ? file.getOriginalFilename() : "null");
             throw new RuntimeException("No face detected in the image. Please upload an image with a clearly visible face.");
         } catch (FaceEmbeddingException.InvalidImageException e) {
-            log.warn("Invalid image format: {}", file.getOriginalFilename());
+            log.warn("Invalid image format: {}", file != null ? file.getOriginalFilename() : "null");
             throw new RuntimeException("Invalid image file. Please upload a valid image (JPEG, PNG, WebP).");
         } catch (FaceEmbeddingException.ServiceUnavailableException e) {
             log.error("Face embedding service unavailable: {}", e.getMessage());
@@ -80,7 +75,7 @@ public class UploadServiceImpl implements UploadService {
             log.error("Error uploading file: {}", e.getMessage());
             throw new RuntimeException("Failed to upload file: " + e.getMessage());
         } catch (Exception e) {
-            log.error("Unexpected error during upload: {}", e.getMessage());
+            log.error("Unexpected error during upload: {}", e.getMessage(), e);
             throw new RuntimeException("Upload failed: " + e.getMessage());
         }
     }
@@ -93,7 +88,6 @@ public class UploadServiceImpl implements UploadService {
         logUploadDetails(files);
         EventDetails event = validateEventOwnership(eventId, photographerId);
 
-        // When uploading to a sub-event, validate it exists and belongs to this event
         if (subEventId != null) {
             validateSubEventOwnership(subEventId, eventId, photographerId);
         }
@@ -101,6 +95,7 @@ public class UploadServiceImpl implements UploadService {
         if (files == null || files.isEmpty()) {
             throw new RuntimeException("No files provided for upload.");
         }
+        int maxFiles = uploadProperties.getMaxFiles();
         if (files.size() > maxFiles) {
             throw new RuntimeException("Too many files. Maximum allowed per request is " + maxFiles + ".");
         }
@@ -114,17 +109,23 @@ public class UploadServiceImpl implements UploadService {
                     results.add(UploadResponseDto.fileFailure(originalFilename, "File is empty."));
                     continue;
                 }
-                if (!FileValidationUtil.isValidImageFile(file)) {
+                if (!FileValidationUtil.isAllowedContentType(file, uploadProperties.getAllowedContentTypes())) {
                     results.add(UploadResponseDto.fileFailure(originalFilename,
                             "Unsupported file type. Only JPEG, PNG, and WebP images are allowed."));
                     continue;
                 }
+                long maxSizeBytes = uploadProperties.getMaxImageSizeMb() * 1024 * 1024;
+                if (file.getSize() > maxSizeBytes) {
+                    results.add(UploadResponseDto.fileFailure(originalFilename,
+                            "File exceeds maximum allowed image size of " + uploadProperties.getMaxImageSizeMb() + " MB."));
+                    continue;
+                }
+
                 UploadResponseDto result = processSingleFile(file, event, subEventId, photographerId);
                 results.add(result);
             } catch (FaceEmbeddingException.NoFaceDetectedException e) {
                 log.warn("No face detected in file: {}", originalFilename);
-                results.add(UploadResponseDto.skipped(originalFilename,
-                        "No face detected — image skipped."));
+                results.add(UploadResponseDto.skipped(originalFilename, "No face detected — image skipped."));
             } catch (FaceEmbeddingException.ServiceUnavailableException e) {
                 log.error("Face service unavailable while processing: {}", originalFilename);
                 results.add(UploadResponseDto.fileFailure(originalFilename,
@@ -149,32 +150,35 @@ public class UploadServiceImpl implements UploadService {
                                            MultipartFile zipFile, Long photographerId) {
         EventDetails event = validateEventOwnership(eventId, photographerId);
 
-        // When uploading to a sub-event, validate it exists and belongs to this event
         if (subEventId != null) {
             validateSubEventOwnership(subEventId, eventId, photographerId);
         }
 
-        // Validate the file is actually a ZIP
         if (!FileValidationUtil.isZipFile(zipFile)) {
             throw new RuntimeException("Uploaded file is not a valid ZIP archive.");
         }
 
-        // Enforce size limit
-        long maxZipBytes = maxZipSizeMb * 1024 * 1024;
+        long maxZipBytes = uploadProperties.getMaxZipSizeMb() * 1024 * 1024;
         if (zipFile.getSize() > maxZipBytes) {
             throw new RuntimeException(
-                    "ZIP file exceeds the maximum allowed size of " + maxZipSizeMb + " MB.");
+                    "ZIP file exceeds the maximum allowed size of " + uploadProperties.getMaxZipSizeMb() + " MB.");
         }
 
         Path tempDir = null;
         List<UploadResponseDto> results = new ArrayList<>();
+        int maxFiles = uploadProperties.getMaxFiles();
 
         try {
-            // Extract ZIP to a temporary directory
-            tempDir = Files.createTempDirectory("grabpic_zip_");
-            log.info("Extracting ZIP '{}' to temp dir: {}", zipFile.getOriginalFilename(), tempDir);
+            String customZipDir = uploadProperties.getZipTempDir();
+            if (customZipDir != null && !customZipDir.isBlank()) {
+                Path customPath = Paths.get(customZipDir);
+                Files.createDirectories(customPath);
+                tempDir = Files.createTempDirectory(customPath, "grabpic_zip_");
+            } else {
+                tempDir = Files.createTempDirectory("grabpic_zip_");
+            }
+            log.info("Extracting ZIP '{}' to ephemeral temp dir: {}", zipFile.getOriginalFilename(), tempDir);
 
-            // Write ZIP bytes to temp file for ZipFile API
             Path tempZipFile = tempDir.resolve("upload.zip");
             Files.copy(zipFile.getInputStream(), tempZipFile, StandardCopyOption.REPLACE_EXISTING);
 
@@ -186,7 +190,6 @@ public class UploadServiceImpl implements UploadService {
                 while (entries.hasMoreElements()) {
                     ZipEntry entry = entries.nextElement();
 
-                    // Skip directories and hidden/system files
                     if (entry.isDirectory() || entry.getName().startsWith("__MACOSX")) {
                         continue;
                     }
@@ -202,14 +205,12 @@ public class UploadServiceImpl implements UploadService {
                         continue;
                     }
 
-                    // Only process supported image file types by extension
                     String entryName = Paths.get(entry.getName()).getFileName().toString();
                     if (!FileValidationUtil.hasValidImageExtension(entryName)) {
                         log.debug("Skipping non-image ZIP entry: {}", entryName);
                         continue;
                     }
 
-                    // Enforce max-files limit across entries
                     if (extractedImages.size() >= maxFiles) {
                         log.warn("ZIP contains more than {} images; excess entries will be skipped.", maxFiles);
                         results.add(UploadResponseDto.skipped(entryName,
@@ -217,7 +218,6 @@ public class UploadServiceImpl implements UploadService {
                         continue;
                     }
 
-                    // Extract entry
                     Files.createDirectories(entryPath.getParent());
                     try (InputStream is = zip.getInputStream(entry)) {
                         Files.copy(is, entryPath, StandardCopyOption.REPLACE_EXISTING);
@@ -229,7 +229,6 @@ public class UploadServiceImpl implements UploadService {
 
             log.info("Extracted {} image(s) from ZIP for event={}", extractedImages.size(), eventId);
 
-            // Process each extracted image file
             for (Path imagePath : extractedImages) {
                 String filename = imagePath.getFileName().toString();
                 try {
@@ -256,7 +255,6 @@ public class UploadServiceImpl implements UploadService {
             log.error("Error processing ZIP file: {}", e.getMessage());
             throw new RuntimeException("Failed to process ZIP archive: " + e.getMessage());
         } finally {
-            // Guaranteed cleanup of temp directory
             if (tempDir != null) {
                 deleteDirectoryQuietly(tempDir);
             }
@@ -269,19 +267,11 @@ public class UploadServiceImpl implements UploadService {
         return response;
     }
 
-    // ── Shared core processing ────────────────────────────────────────────────
-
-    // ── Shared core processing ────────────────────────────────────────────────
+    // ── Shared core processing with GCS Cloud Storage ────────────────────────
 
     /**
      * Core processing pipeline for a single image file.
-     * Computes SHA-256 hash -> checks duplicate -> persists file & asset (status UPLOADED) -> triggers async face processing.
-     *
-     * @param file           the image file to process
-     * @param event          the validated event entity
-     * @param subEventId     optional sub-event ID (null = main event)
-     * @param photographerId the authenticated photographer
-     * @return UploadResponseDto with status UPLOADED or duplicate status
+     * Computes SHA-256 hash -> checks duplicate -> uploads original and thumbnail to GCS -> persists asset (status UPLOADED) -> triggers async face processing.
      */
     private UploadResponseDto processSingleFile(MultipartFile file, EventDetails event,
                                                 Long subEventId, Long photographerId)
@@ -299,10 +289,14 @@ public class UploadServiceImpl implements UploadService {
             AssetDetails existingAsset = existingAssetOpt.get();
             log.info("Duplicate file detected for eventId={}: hash={}, existingAssetId={}",
                     event.getId(), contentHash, existingAsset.getId());
+
+            String returnAssetUrl = resolveReturnUrl(existingAsset.getAssetUrl());
+            String returnThumbnailUrl = resolveReturnUrl(existingAsset.getThumbnailUrl());
+
             return UploadResponseDto.duplicate(
                     existingAsset.getId(),
-                    existingAsset.getAssetUrl(),
-                    existingAsset.getThumbnailUrl(),
+                    returnAssetUrl,
+                    returnThumbnailUrl,
                     existingAsset.getSize(),
                     existingAsset.getEventId(),
                     existingAsset.getSubEventId(),
@@ -312,44 +306,97 @@ public class UploadServiceImpl implements UploadService {
             );
         }
 
-        // Store the file to disk using SHA-256 hash prefix for safe naming
-        Path filePath = storeFileWithHash(fileBytes, originalFilename, contentHash, event.getId());
-        String assetUrl = filePath.toString().replace("\\", "/");
-        String thumbnailUrl = assetUrl; // placeholder until thumbnail service is added
+        // Generate GCS object keys using centralized configuration
+        String originalKey = ObjectKeyGenerator.generateOriginalKey(
+                gcpStorageProperties, event.getId(), contentHash, originalFilename);
+        String thumbnailKey = ObjectKeyGenerator.generateThumbnailKey(
+                gcpStorageProperties, event.getId(), contentHash, originalFilename);
 
-        // Persist Asset Details with initial status UPLOADED
-        AssetDetails asset = AssetDetails.builder()
-                .eventId(event.getId())
-                .subEventId(subEventId)
-                .photographerId(photographerId)
-                .assetUrl(assetUrl)
-                .thumbnailUrl(thumbnailUrl)
-                .size(file.getSize())
-                .originalFilename(originalFilename)
-                .contentType(file.getContentType())
-                .contentHash(contentHash)
-                .status("UPLOADED")
-                .isDeleted(false)
-                .build();
+        String contentType = file.getContentType() != null ? file.getContentType() : resolveContentType(originalFilename);
 
-        AssetDetails savedAsset = assetRepository.save(asset);
+        // Generate thumbnail bytes using ThumbnailService
+        byte[] thumbnailBytes = thumbnailService.generateThumbnail(fileBytes, contentType);
 
-        // Queue asynchronous background face embedding processing
-        asyncFaceProcessingService.processAssetFaceEmbeddings(savedAsset.getId(), filePath);
+        String uploadedOriginalKey = null;
+        String uploadedThumbnailKey = null;
 
-        log.info("Uploaded file '{}': assetId={}, contentHash={}, eventId={}, subEventId={}. Face processing queued.",
-                originalFilename, savedAsset.getId(), contentHash, event.getId(), subEventId);
+        try {
+            // Upload original image to Cloud Storage (GCS)
+            uploadedOriginalKey = storageService.upload(originalKey, fileBytes, contentType);
 
-        return UploadResponseDto.uploaded(
-                savedAsset.getId(), assetUrl, thumbnailUrl, file.getSize(),
-                event.getId(), subEventId, originalFilename, contentHash);
+            // Upload thumbnail image to Cloud Storage if generated, otherwise point thumbnail to original
+            String persistedThumbnailKey;
+            if (thumbnailBytes != null && thumbnailBytes.length > 0) {
+                uploadedThumbnailKey = storageService.upload(thumbnailKey, thumbnailBytes, "image/jpeg");
+                persistedThumbnailKey = uploadedThumbnailKey;
+            } else {
+                persistedThumbnailKey = uploadedOriginalKey;
+            }
+
+            // Persist Asset Details in PostgreSQL storing GCS Object Keys (never signed URLs)
+            AssetDetails asset = AssetDetails.builder()
+                    .eventId(event.getId())
+                    .subEventId(subEventId)
+                    .photographerId(photographerId)
+                    .assetUrl(uploadedOriginalKey)
+                    .thumbnailUrl(persistedThumbnailKey)
+                    .size(file.getSize())
+                    .originalFilename(originalFilename)
+                    .contentType(contentType)
+                    .contentHash(contentHash)
+                    .status("UPLOADED")
+                    .isDeleted(false)
+                    .build();
+
+            AssetDetails savedAsset = assetRepository.save(asset);
+
+            // Queue asynchronous background face embedding processing passing the GCS object key
+            asyncFaceProcessingService.processAssetFaceEmbeddings(savedAsset.getId(), uploadedOriginalKey);
+
+            log.info("Uploaded to GCS and queued face processing: assetId={}, originalKey={}, thumbnailKey={}, eventId={}",
+                    savedAsset.getId(), uploadedOriginalKey, persistedThumbnailKey, event.getId());
+
+            // Prepare URLs for API response (signed URLs if configured, otherwise object keys)
+            String returnAssetUrl = resolveReturnUrl(uploadedOriginalKey);
+            String returnThumbnailUrl = resolveReturnUrl(persistedThumbnailKey);
+
+            return UploadResponseDto.uploaded(
+                    savedAsset.getId(), returnAssetUrl, returnThumbnailUrl, file.getSize(),
+                    event.getId(), subEventId, originalFilename, contentHash);
+
+        } catch (Exception e) {
+            log.error("Failed during storage upload or DB save for '{}': {}", originalFilename, e.getMessage());
+            // Compensating transaction: remove uploaded GCS objects if DB save or subsequent step failed
+            if (storageProperties.isDeleteOnUploadFailure()) {
+                if (uploadedOriginalKey != null) {
+                    storageService.delete(uploadedOriginalKey);
+                }
+                if (uploadedThumbnailKey != null) {
+                    storageService.delete(uploadedThumbnailKey);
+                }
+            }
+            throw new RuntimeException("Upload processing failed: " + e.getMessage(), e);
+        }
+    }
+
+    private String resolveReturnUrl(String objectKey) {
+        if (objectKey == null || objectKey.isBlank()) {
+            return null;
+        }
+        if (storageProperties.isUseSignedUrlsForUploadResponses()) {
+            try {
+                Duration duration = Duration.ofMinutes(gcpStorageProperties.getSignedUrl().getDurationMinutes());
+                return storageService.generateSignedUrl(objectKey, duration);
+            } catch (Exception e) {
+                log.warn("Could not generate signed URL for upload response (key={}): {}", objectKey, e.getMessage());
+                return objectKey;
+            }
+        }
+        return objectKey;
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
-    /**
-     * Calculates SHA-256 hex string for an input byte array.
-     */
     private String calculateSha256(byte[] bytes) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -366,10 +413,6 @@ public class UploadServiceImpl implements UploadService {
         }
     }
 
-    /**
-     * Validates that an event (main or sub) exists, is active, and is owned by the photographer.
-     * For sub-event uploads, the eventId in the path must refer to the main (parent) event.
-     */
     private EventDetails validateEventOwnership(Long eventId, Long photographerId) {
         EventDetails event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new RuntimeException("Event not found with id: " + eventId));
@@ -382,14 +425,6 @@ public class UploadServiceImpl implements UploadService {
         return event;
     }
 
-    /**
-     * Validates that a sub-event exists, is active, belongs to the given parent event,
-     * and is owned by the photographer. Called before any upload that targets a sub-event.
-     *
-     * @param subEventId     the sub-event to validate
-     * @param parentEventId  the parent event it must belong to
-     * @param photographerId the authenticated photographer
-     */
     private void validateSubEventOwnership(Long subEventId, Long parentEventId, Long photographerId) {
         EventDetails subEvent = eventRepository.findById(subEventId)
                 .orElseThrow(() -> new RuntimeException(
@@ -408,51 +443,13 @@ public class UploadServiceImpl implements UploadService {
         }
     }
 
-    /**
-     * Stores file under the event's directory using SHA-256 prefix for safety.
-     */
-    private Path storeFileWithHash(byte[] bytes, String originalFilename, String contentHash, Long eventId) throws IOException {
-        Path eventDir = Paths.get(uploadDir, "event_" + eventId);
-        if (!Files.exists(eventDir)) {
-            Files.createDirectories(eventDir);
-        }
-
-        String hashPrefix = contentHash != null && contentHash.length() >= 12 ? contentHash.substring(0, 12) : "img";
-        String sanitizedFilename = originalFilename != null ? originalFilename.replaceAll("[^a-zA-Z0-9._-]", "_") : "file.jpg";
-        String filename = System.currentTimeMillis() + "_" + hashPrefix + "_" + sanitizedFilename;
-
-        Path filePath = eventDir.resolve(filename);
-        Files.write(filePath, bytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-
-        return filePath;
-    }
-
-
-    /**
-     * Converts a Double list to a float array for pgvector compatibility.
-     */
-    private float[] convertDoubleListToFloatArray(List<Double> embedding) {
-        float[] result = new float[embedding.size()];
-        for (int i = 0; i < embedding.size(); i++) {
-            result[i] = embedding.get(i).floatValue();
-        }
-        return result;
-    }
-
-    /**
-     * Resolves a MIME content type from a filename extension.
-     */
     private String resolveContentType(String filename) {
         String lower = filename.toLowerCase();
         if (lower.endsWith(".png")) return "image/png";
         if (lower.endsWith(".webp")) return "image/webp";
-        return "image/jpeg"; // default for .jpg / .jpeg
+        return "image/jpeg";
     }
 
-    /**
-     * Recursively deletes a directory and all its contents, suppressing any exceptions.
-     * Used to clean up temporary ZIP extraction directories.
-     */
     private void deleteDirectoryQuietly(Path dir) {
         try {
             Files.walkFileTree(dir, new SimpleFileVisitor<Path>() {
@@ -498,10 +495,7 @@ public class UploadServiceImpl implements UploadService {
 
         double totalSizeMb = totalSizeBytes / (1024.0 * 1024.0);
         sb.append(String.format("totalSize=%d bytes (%.2f MB)%n", totalSizeBytes, totalSizeMb));
-        sb.append("maxSingleFileSize=104857600 bytes (100.00 MB)%n");
-        sb.append("maxTotalUploadSize=524288000 bytes (500.00 MB)");
 
         log.info(sb.toString());
     }
 }
-

@@ -9,6 +9,7 @@ import com.grabpic.backend.repository.AssetRepository;
 import com.grabpic.backend.repository.FaceEmbeddingRepository;
 import com.grabpic.backend.service.AsyncFaceProcessingService;
 import com.grabpic.backend.service.FaceEmbeddingService;
+import com.grabpic.backend.service.StorageService;
 import com.grabpic.backend.util.ByteArrayMultipartFile;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,9 +17,6 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 
 @Service
@@ -29,11 +27,12 @@ public class AsyncFaceProcessingServiceImpl implements AsyncFaceProcessingServic
     private final AssetRepository assetRepository;
     private final FaceEmbeddingRepository faceEmbeddingRepository;
     private final FaceEmbeddingService faceEmbeddingService;
+    private final StorageService storageService;
 
     @Override
     @Async("faceProcessingExecutor")
-    public void processAssetFaceEmbeddings(Long assetId, Path filePath) {
-        log.info("Starting background face processing for assetId={}, path={}", assetId, filePath);
+    public void processAssetFaceEmbeddings(Long assetId, String objectKey) {
+        log.info("Starting background face processing for assetId={}, objectKey={}", assetId, objectKey);
 
         AssetDetails asset = assetRepository.findById(assetId).orElse(null);
         if (asset == null || Boolean.TRUE.equals(asset.getIsDeleted())) {
@@ -47,23 +46,24 @@ public class AsyncFaceProcessingServiceImpl implements AsyncFaceProcessingServic
         assetRepository.save(asset);
 
         try {
-            if (!Files.exists(filePath)) {
-                throw new IOException("File not found on disk at: " + filePath);
+            // 2. Download original image bytes from cloud storage (GCS)
+            byte[] fileBytes = storageService.download(objectKey);
+            if (fileBytes == null || fileBytes.length == 0) {
+                throw new IllegalStateException("Storage returned empty payload for objectKey: " + objectKey);
             }
 
-            byte[] fileBytes = Files.readAllBytes(filePath);
             String filename = asset.getOriginalFilename() != null ? asset.getOriginalFilename() : "image.jpg";
             String contentType = asset.getContentType() != null ? asset.getContentType() : "image/jpeg";
 
             MultipartFile multipartFile = new ByteArrayMultipartFile(fileBytes, filename, filename, contentType);
 
-            // 2. Call InsightFace service
+            // 3. Call InsightFace service
             EmbeddingResponseDto responseDto = faceEmbeddingService.getAllFaces(multipartFile);
 
             int faceCount = 0;
             if (responseDto != null && responseDto.getFaces() != null) {
                 faceCount = responseDto.getFaces().size();
-                // 3. Save face embeddings into pgvector repository
+                // 4. Save face embeddings into pgvector repository
                 for (FaceEmbeddingDto face : responseDto.getFaces()) {
                     float[] embeddingArray = convertDoubleListToFloatArray(face.getEmbedding());
                     String vectorStr = VectorConverter.convertFloatArrayToVectorString(embeddingArray);
@@ -71,21 +71,20 @@ public class AsyncFaceProcessingServiceImpl implements AsyncFaceProcessingServic
                 }
             }
 
-            // 4. Mark status COMPLETED for all valid event photos (whether containing faces or venue/decorations)
+            // 5. Mark status COMPLETED for all valid event photos (whether containing faces or venue/decorations)
             asset.setStatus("COMPLETED");
             asset.setFailureReason(null);
             assetRepository.save(asset);
 
-            log.info("Successfully processed assetId={}: saved file with {} detected face(s).", assetId, faceCount);
+            log.info("Successfully processed assetId={}: detected {} face(s). Status marked COMPLETED.", assetId, faceCount);
 
         } catch (FaceEmbeddingException.ServiceUnavailableException e) {
-
             log.error("Face embedding service unavailable for assetId={}: {}", assetId, e.getMessage());
             asset.setStatus("FAILED");
             asset.setFailureReason("Face detection service unavailable.");
             assetRepository.save(asset);
         } catch (Exception e) {
-            log.error("Failed face processing for assetId={}: {}", assetId, e.getMessage());
+            log.error("Failed face processing for assetId={}: {}", assetId, e.getMessage(), e);
             asset.setStatus("FAILED");
             asset.setFailureReason(e.getMessage());
             assetRepository.save(asset);

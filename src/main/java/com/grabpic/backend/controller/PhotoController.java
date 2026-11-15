@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @Slf4j
@@ -55,6 +56,34 @@ public class PhotoController {
         log.info("Public fetch photos for event public token: {}", publicToken);
         List<UploadResponseDto> photos = photoService.getPhotosByPublicToken(publicToken);
         return ResponseEntity.ok(photos);
+    }
+
+    /**
+     * Public endpoint to request a short-lived V4 signed URL for the original full-resolution image.
+     */
+    @GetMapping("/api/public/event/{publicToken}/photos/{assetId}/original-url")
+    public ResponseEntity<Map<String, String>> getPublicOriginalUrl(
+            @PathVariable String publicToken,
+            @PathVariable Long assetId) {
+
+        log.info("Requesting original signed URL for public token: {}, assetId: {}", publicToken, assetId);
+        String signedUrl = photoService.getOriginalPhotoUrlByPublicToken(publicToken, assetId);
+        return ResponseEntity.ok(Map.of("assetId", String.valueOf(assetId), "originalUrl", signedUrl));
+    }
+
+    /**
+     * Photographer endpoint to request a short-lived V4 signed URL for the original full-resolution image.
+     */
+    @GetMapping("/api/events/{eventId}/photos/{assetId}/original-url")
+    public ResponseEntity<Map<String, String>> getPhotographerOriginalUrl(
+            @PathVariable Long eventId,
+            @PathVariable Long assetId,
+            @RequestAttribute("userId") Long photographerId) {
+
+        log.info("Requesting original signed URL for eventId: {}, assetId: {}, photographerId: {}",
+                eventId, assetId, photographerId);
+        String signedUrl = photoService.getOriginalPhotoUrlByPhotographer(eventId, assetId, photographerId);
+        return ResponseEntity.ok(Map.of("assetId", String.valueOf(assetId), "originalUrl", signedUrl));
     }
 
     /**

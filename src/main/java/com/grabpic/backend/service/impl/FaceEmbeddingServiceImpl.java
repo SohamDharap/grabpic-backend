@@ -1,13 +1,13 @@
 package com.grabpic.backend.service.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.grabpic.backend.config.properties.FaceServiceProperties;
 import com.grabpic.backend.dto.response.EmbeddingResponseDto;
 import com.grabpic.backend.dto.response.FaceEmbeddingDto;
 import com.grabpic.backend.exception.FaceEmbeddingException;
 import com.grabpic.backend.service.FaceEmbeddingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -29,9 +29,7 @@ public class FaceEmbeddingServiceImpl implements FaceEmbeddingService {
 
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
-
-    @Value("${face.service.url:http://localhost:8001/embed}")
-    private String faceServiceUrl;
+    private final FaceServiceProperties faceServiceProperties;
 
     @Override
     public EmbeddingResponseDto getAllFaces(MultipartFile file) throws FaceEmbeddingException {
@@ -39,27 +37,27 @@ public class FaceEmbeddingServiceImpl implements FaceEmbeddingService {
             throw new FaceEmbeddingException.InvalidImageException("Uploaded file is empty.");
         }
 
+        String embedUrl = faceServiceProperties.getEmbedUrl();
         try {
-            log.info("Extracting face embeddings from file: {}", file.getOriginalFilename());
-            
+            log.info("Extracting face embeddings from file: {} via {}", file.getOriginalFilename(), embedUrl);
+
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.MULTIPART_FORM_DATA);
 
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-            
+
             ByteArrayResource resource = new ByteArrayResource(file.getBytes()) {
                 @Override
                 public String getFilename() {
                     return file.getOriginalFilename() != null ? file.getOriginalFilename() : "image.jpg";
                 }
             };
-            
+
             body.add("file", resource);
 
             HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
 
-            ResponseEntity<String> response = restTemplate.postForEntity(
-                    faceServiceUrl, requestEntity, String.class);
+            ResponseEntity<String> response = restTemplate.postForEntity(embedUrl, requestEntity, String.class);
 
             if (response.getStatusCode() == HttpStatus.OK) {
                 EmbeddingResponseDto responseDto = objectMapper.readValue(response.getBody(), EmbeddingResponseDto.class);
@@ -78,7 +76,6 @@ public class FaceEmbeddingServiceImpl implements FaceEmbeddingService {
                 log.info("No face detected in image (venue/decoration photo): {}", file.getOriginalFilename());
                 return EmbeddingResponseDto.builder().faces(java.util.Collections.emptyList()).build();
             } else if (e.getStatusCode() == HttpStatus.BAD_REQUEST) {
-
                 log.warn("Invalid/corrupt image file: {}", file.getOriginalFilename());
                 throw new FaceEmbeddingException.InvalidImageException("Unable to decode or invalid image file format.");
             } else {
@@ -91,9 +88,9 @@ public class FaceEmbeddingServiceImpl implements FaceEmbeddingService {
             throw new FaceEmbeddingException.ServiceUnavailableException(
                     "Python service server error: " + e.getMessage());
         } catch (ResourceAccessException e) {
-            log.error("Python service unavailable at: {}", faceServiceUrl);
+            log.error("Python service unavailable at: {}", embedUrl);
             throw new FaceEmbeddingException.ServiceUnavailableException(
-                    "Python face service is not available. Please ensure the service is running at: " + faceServiceUrl);
+                    "Python face service is not available. Please ensure the service is running at: " + embedUrl);
         } catch (IOException e) {
             log.error("Error reading image file bytes: {}", e.getMessage());
             throw new FaceEmbeddingException("Error processing image file: " + e.getMessage());

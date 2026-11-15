@@ -1,5 +1,7 @@
 package com.grabpic.backend.service.impl;
 
+import com.grabpic.backend.config.properties.GcpStorageProperties;
+import com.grabpic.backend.config.properties.StorageProperties;
 import com.grabpic.backend.converter.VectorConverter;
 import com.grabpic.backend.dto.response.SearchResultDto;
 import com.grabpic.backend.entity.EventDetails;
@@ -8,11 +10,13 @@ import com.grabpic.backend.repository.EventRepository;
 import com.grabpic.backend.repository.FaceEmbeddingRepository;
 import com.grabpic.backend.service.FaceEmbeddingService;
 import com.grabpic.backend.service.SearchService;
+import com.grabpic.backend.service.StorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -25,6 +29,9 @@ public class SearchServiceImpl implements SearchService {
     private final EventRepository eventRepository;
     private final FaceEmbeddingRepository faceEmbeddingRepository;
     private final FaceEmbeddingService faceEmbeddingService;
+    private final StorageService storageService;
+    private final GcpStorageProperties gcpStorageProperties;
+    private final StorageProperties storageProperties;
 
     @Override
     public List<SearchResultDto> searchByFace(String publicToken, MultipartFile selfieFile) {
@@ -47,21 +54,33 @@ public class SearchServiceImpl implements SearchService {
 
             log.info("pgvector returned {} candidate face matches from DB", results.size());
 
-            // Convert results to SearchResultDto
+            Duration signedUrlDuration = Duration.ofMinutes(gcpStorageProperties.getSignedUrl().getDurationMinutes());
+
+            // Convert results to SearchResultDto with signed thumbnail URLs
             List<SearchResultDto> searchResults = new ArrayList<>();
             for (Object[] result : results) {
                 Long assetId = ((Number) result[0]).longValue();
-                String assetUrl = (String) result[1];
-                String thumbnailUrl = (String) result[2];
+                String assetKey = (String) result[1];
+                String thumbnailKey = (String) result[2];
                 double distance = ((Number) result[3]).doubleValue();
-                
+
                 // Cosine similarity = 1 - cosine distance
                 double similarity = Math.max(0.0, 1.0 - distance);
                 log.info("Candidate assetId: {}, distance: {}, similarity: {}", assetId, distance, similarity);
-                
+
                 // Include matches with Cosine Distance <= 0.75 (Cosine Similarity >= 0.25)
                 if (distance <= 0.75) {
-                    searchResults.add(new SearchResultDto(assetId, assetUrl, thumbnailUrl, similarity));
+                    String signedThumbnailUrl = thumbnailKey;
+                    if (storageProperties.isGenerateSignedUrlsForThumbnails() && thumbnailKey != null) {
+                        try {
+                            signedThumbnailUrl = storageService.generateSignedUrl(thumbnailKey, signedUrlDuration);
+                        } catch (Exception e) {
+                            log.warn("Failed to sign thumbnail URL for key '{}': {}", thumbnailKey, e.getMessage());
+                        }
+                    }
+
+                    // For search results, we deliver the thumbnail URL and keep original URL on demand
+                    searchResults.add(new SearchResultDto(assetId, null, signedThumbnailUrl, similarity));
                 }
             }
 
@@ -78,7 +97,7 @@ public class SearchServiceImpl implements SearchService {
             log.error("Error processing face embedding for search: {}", e.getMessage());
             throw new RuntimeException("Failed to process face embedding: " + e.getMessage());
         } catch (Exception e) {
-            log.error("Error searching by face: {}", e.getMessage());
+            log.error("Error searching by face: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to search by face: " + e.getMessage());
         }
     }
