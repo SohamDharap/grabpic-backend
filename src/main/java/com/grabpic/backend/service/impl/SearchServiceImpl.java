@@ -56,7 +56,7 @@ public class SearchServiceImpl implements SearchService {
 
             Duration signedUrlDuration = Duration.ofMinutes(gcpStorageProperties.getSignedUrl().getDurationMinutes());
 
-            // Convert results to SearchResultDto with signed thumbnail URLs
+            // Convert results to SearchResultDto with signed asset and thumbnail URLs
             List<SearchResultDto> searchResults = new ArrayList<>();
             for (Object[] result : results) {
                 Long assetId = ((Number) result[0]).longValue();
@@ -79,8 +79,16 @@ public class SearchServiceImpl implements SearchService {
                         }
                     }
 
-                    // For search results, we deliver the thumbnail URL and keep original URL on demand
-                    searchResults.add(new SearchResultDto(assetId, null, signedThumbnailUrl, similarity));
+                    String signedAssetUrl = assetKey;
+                    if (assetKey != null) {
+                        try {
+                            signedAssetUrl = storageService.generateSignedUrl(assetKey, signedUrlDuration);
+                        } catch (Exception e) {
+                            log.warn("Failed to sign asset URL for key '{}': {}", assetKey, e.getMessage());
+                        }
+                    }
+
+                    searchResults.add(new SearchResultDto(assetId, signedAssetUrl, signedThumbnailUrl, similarity));
                 }
             }
 
